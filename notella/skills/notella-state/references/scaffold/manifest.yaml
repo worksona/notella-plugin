@@ -1,0 +1,140 @@
+# ~/notella/manifest.yaml
+# Personal notes intelligence facility — handwritten note pages → running intelligence
+# This is the identity and configuration of the notella facility.
+# Edited by hand at setup; updated by skills only via notella-state with locking.
+
+schema_version: "0.1.0"
+
+identity:
+  owner: "David Olsson"
+  alias: "Stonemason"
+  timezone: "America/Vancouver"
+
+# Projects — the conceptual buckets pages get attributed to.
+# A page without a clear project lands attribution-empty until tagged.
+# Skills can read this list to disambiguate person/project mentions.
+# Add or edit projects by hand; aliases let attribution match variant spellings.
+projects:
+  - slug: project-sunshine
+    name: "Project Sunshine"
+    aliases: [sunshine, "sovereign intelligence fabric"]
+    person_aliases: {}
+    portfolio: worksona
+    status: active
+    priority: 1
+
+  - slug: scsiwyg
+    name: "scsiwyg"
+    aliases: [scsiwyg, "headless blog"]
+    person_aliases: {}
+    portfolio: atomic47
+    status: active
+    priority: 1
+
+  - slug: worksona
+    name: "Worksona"
+    aliases: [worksona, "worksona platform"]
+    person_aliases: {}
+    portfolio: worksona
+    status: active
+    priority: 1
+
+  - slug: notella
+    name: "notella"
+    aliases: [notella, "notes intelligence"]
+    person_aliases: {}
+    portfolio: personal
+    status: active
+    priority: 2
+
+# People — canonical names → variants.
+# Used by metadata and first-pass to resolve who's mentioned.
+people_aliases:
+  # alice: [alice-chen, ali, a]
+  # bob: [bob-rodriguez, bob-r]
+
+# Focus — daily focus topics that bias the orchestrator's prioritization.
+# Set by hand or by an explicit "today I'm focused on X" interaction.
+focus:
+  daily_topics: []
+  weekly_topics: []
+
+# Intake configuration — controls how photos enter the facility.
+intake:
+  inbox_path: "inbox/"
+  heic_convert: true                    # convert HEIC to JPG at intake
+  generate_thumbnail: true
+  thumbnail_max_dim_px: 800
+  preserve_originals: true              # keep raw/page.heic immutable
+  entry_grouping_window_minutes: 15     # auto-group photos within N minutes via EXIF
+
+# Model defaults — per-task; overridable per call.
+# Light tasks → Haiku. Vision + reasoning → Sonnet. Synthesis → Opus.
+model_defaults:
+  classify: claude-haiku-4-5
+  transcribe: claude-sonnet-4-6
+  composition: claude-haiku-4-5
+  metadata: claude-haiku-4-5
+  first_pass: claude-sonnet-4-6
+  actions: claude-sonnet-4-6
+  diagram: claude-sonnet-4-6
+  sketch: claude-sonnet-4-6
+  table: claude-sonnet-4-6
+  daily_synthesis: claude-opus-4-6
+  project_synthesis: claude-opus-4-6
+  weekly_synthesis: claude-opus-4-6
+  themes: claude-opus-4-6
+
+# Provider keys — references, never values.
+# `env` means the skill reads ANTHROPIC_API_KEY from the environment.
+# `byok` means a locally encrypted key is loaded from ~/notella/secrets/ (TBD).
+provider_keys:
+  anthropic: env
+
+# Cadence — when scheduled jobs may run. Times are in identity.timezone.
+# The orchestrator decides whether to run; cadence is the earliest acceptable time.
+cadence:
+  inbox_drain: "on-invocation"          # drained whenever orchestrator runs
+  daily_synthesis: "20:00"              # end-of-day synthesis target
+  weekly_synthesis: "Monday 08:00"
+  longitudinal_refresh: "Sunday 22:00"
+
+# Phase machine — declarative; notella-state validates against this.
+phases:
+  - intake
+  - classified
+  - transcribed
+  - first-pass-done
+  - enriched
+  - indexed
+  - archived
+
+# Route plan vocabulary — what classify.json:route_plan may contain.
+route_plan_vocab:
+  - transcription
+  - semantic_structuring
+  - diagram_interpretation
+  - sketch_interpretation
+  - table_extraction
+  - action_decision
+  - value_signal
+  - tagging
+  - composition
+
+# Bootstrap themes — seeds for longitudinal/themes.json.
+# notella-themes can discover new ones and add them.
+bootstrap_themes:
+  - sovereignty
+  - skills-architecture
+  - documentation-driven
+  - longitudinal-intelligence
+  - first-principles
+  - layered-analysis
+
+# Counters — initialized by `notella-state init`; bumped by every write.
+counters_initial:
+  pages_total: 0
+  pages_by_phase: {}
+  entries_total: 0
+  events_total: 0
+  events_by_kind: {}

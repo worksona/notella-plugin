@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1.0",
+  "first_intake_at": null,
+  "last_intake_at": null,
+  "last_synthesis_at": {
+    "daily": null,
+    "weekly": null,
+    "by_project": {}
+  },
+  "last_longitudinal_at": null,
+  "last_orchestrator_run": null,
+  "counters": {
+    "pages_total": 0,
+    "pages_by_phase": {
+      "intake": 0,
+      "classified": 0,
+      "transcribed": 0,
+      "first-pass-done": 0,
+      "enriched": 0,
+      "indexed": 0,
+      "archived": 0
+    },
+    "entries_total": 0,
+    "events_total": 0,
+    "events_by_kind": {}
+  },
+  "active_locks": []
+}
