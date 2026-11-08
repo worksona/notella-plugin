@@ -133,7 +133,12 @@ pages_at_intake     = list-pages --phase=intake     → notella-classify
                       (classify fixes a confidently mis-oriented page via notella-images and re-classifies once)
 pages_at_classified = list-pages --phase=classified → notella-transcribe
                       ORIENTATION GATE: skip pages whose quality.json is suspected with a concrete
-                      suggestion → plan.orientation_blocked (transcribe would refuse them anyway)
+                      suggestion → plan.orientation_blocked (transcribe would refuse them anyway).
+                      Pages whose status is `unknown` (source `no-stamp`: no red series stamp and no
+                      confident vision verdict) get an orientation check first: one subagent on the
+                      `orientation_check` model (default sonnet) records {rotate, flip, confidence,
+                      evidence} in classify.json `orientation`, then `scan --pages` + `fix
+                      --all-suggested --source classify`. Never transcribe an unverified page.
 
 pages_at_transcribed → L1 fan-out (all parallel for a given page):
     notella-composition   (always — runs on every page)

@@ -75,7 +75,8 @@ model_defaults:
   # orchestrator dispatches each stage to a subagent with this model. On a
   # facility that keeps cost-controls.yaml, that file's model_defaults wins.
   # Chosen by evals/RESULTS-2026-11-08.md; re-run the eval before changing.
-  classify: haiku
+  classify: sonnet          # orientation: haiku missed 4/27 stamp-less pages
+  orientation_check: sonnet
   intake_page_metadata: haiku
   composition: haiku
   metadata: haiku

@@ -56,7 +56,7 @@ Include `derived/page.jpg` as the image input.
 
 ### Step 4 — Call the model
 
-Runs on the model in `cost-controls.yaml` `model_defaults.classify` (currently `haiku`, chosen by the 2026-11-08 eval: orientation 12/12 on known pages, same as sonnet). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
+Runs on the model in `cost-controls.yaml` `model_defaults.classify` (currently `sonnet`, chosen by the 2026-11-08 eval: on 27 pages without a red stamp Haiku misjudged orientation on 4, Sonnet on none, and a wrong orientation produces a fabricated transcript downstream). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 Log via `notella-state log-llm-call`:
 

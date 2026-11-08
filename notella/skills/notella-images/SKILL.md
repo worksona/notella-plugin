@@ -69,7 +69,7 @@ Never written: anything under `raw/`.
 
 - `source`: `derived` when `derived/page.jpg` exists (metrics are of what the models see), else `raw`. `exif_orientation`, `sha256_raw` and `dhash` are always of `raw/`.
 - `warnings` ⊆ `blurry, dark, overexposed, low-contrast, low-resolution, exif-rotated`; `grade` is `poor` with ≥ 2 quality warnings, `fair` with 1, else `good` (`exif-rotated` is informational and not counted). Thresholds and the measured distribution: `references/quality-thresholds.md`.
-- `orientation.status`: `fixed` (meta has `orientation_fix`), `suspected`, `ok`, `unknown`. `suggested` is the absolute transform `fix` should apply, or `null` when a page needs a look. `sources` name the signals: `orientation-fix`, `classify`, `stamp-position`, `classify-legacy`, `exif`, `low-transcript-confidence`, `review-cleared`. Rules and precedence: `references/image-analysis.md`.
+- `orientation.status`: `fixed` (meta has `orientation_fix`), `suspected`, `ok`, `unknown`. `ok` now requires positive evidence: the red series stamp found bottom-right, or a confident (≥ 0.7) vision verdict in `classify.json` `orientation`. A page with neither is `unknown` with source `no-stamp` and needs a vision check (model `orientation_check`, default `sonnet`) before transcription — the legacy classifier's "upright" passed upside-down pages, and in the 2026-11-08 check Haiku missed 4 of 27 where Sonnet missed none. `suggested` is the absolute transform `fix` should apply, or `null` when a page needs a look. `sources` name the signals: `orientation-fix`, `classify`, `stamp-position`, `classify-legacy`, `exif`, `low-transcript-confidence`, `review-cleared`. Rules and precedence: `references/image-analysis.md`.
 
 ### `meta.yaml` fields this skill owns
 
