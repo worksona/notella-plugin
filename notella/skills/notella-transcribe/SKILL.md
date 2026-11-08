@@ -40,7 +40,7 @@ notella-state acquire-page-lock {page-id, actor: notella-transcribe@<version>}
 
 ### Step 3 — Build the prompt
 
-Base prompt: notella-the-app's `buildTranscribePrompt()` from `src/lib/prompts/transcribe.ts`. Keep the existing language verbatim (it has been tuned for handwritten business / strategy notes), with two extensions:
+Full prompt: see `references/transcribe-prompt.md` — the complete system prompt, user prompt and response format shipped with this plugin. The base language is tuned for handwritten business / strategy notes; keep it as written. It carries two notella extensions beyond the original transcription prompt:
 
 **Extension 1 — promote marginalia to a structured array** instead of inline markers. The prompt asks the model to emit a `marginalia[]` array alongside the markdown:
 
@@ -63,7 +63,9 @@ For every emphasis mark you observe (underlining, double-underlining, circles, s
 - intensity: 1 (light) | 2 (clear) | 3 (heavy / multi-mark)
 ```
 
-The cleanedTranscript still uses markdown `**bold**` for emphasis where appropriate, but the typed `emphasis[]` array carries the full signal.
+The cleanedTranscript still uses markdown `**bold**` for emphasis where appropriate, but the typed `emphasis[]` array carries the full signal. To make `span_id` / `target_span_id` resolvable, the prompt asks for a stable span id as a trailing HTML comment on every cleanedTranscript line (`<!-- s14 -->`).
+
+The prompt also asks for `extractedDateRaw` (the date exactly as written) alongside the ISO-only `extractedDate`; when the year is not on the page the model returns `extractedDate: null` and `notella-metadata` resolves the year from capture metadata.
 
 ### Step 4 — Call the model
 
@@ -76,7 +78,8 @@ Parse against the schema:
 ```yaml
 rawTranscript: string
 cleanedTranscript: string
-extractedDate: "YYYY-MM-DD" | null
+extractedDate: "YYYY-MM-DD" | null      # ISO only; any other string is a validation failure
+extractedDateRaw: string | null         # the date as written, e.g. "Feb 10/26", "04-23"
 extractedDateConfidence: 0.0-1.0
 extractedPageNumber: string | null
 extractedPageNumberSource: top-right | other | inferred | null

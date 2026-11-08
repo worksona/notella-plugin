@@ -1,6 +1,6 @@
 ---
 name: notella-state
-description: "The shared memory of the notella facility — handwritten note intelligence over time. Read, write, or validate `~/notella/` — manifest, page lifecycle, state.json, events, daily/weekly/project synthesis, longitudinal intelligence, activity log. Trigger on 'log this page', 'advance the phase of page X', 'tail the activity log', 'check notella-state health', 'validate notella', 'list pages', 'count pages by phase', 'get the manifest', 'rebuild the page index', 'init the notella facility', or any request that reads or writes `~/notella/`. Also trigger automatically whenever another notella-* skill (orchestrator, intake, classify, transcribe, first-pass, actions, diagram, sketch, table, composition, metadata, daily-synthesis, project-synthesis, weekly-synthesis, themes) needs to read or write state — they route through this one. Init a new facility if `~/notella/manifest.yaml` doesn't exist."
+description: "The shared memory of the notella facility — handwritten note intelligence over time. Read, write, or validate `~/notella/` — manifest, page lifecycle, state.json, events, daily/weekly/monthly/project synthesis, longitudinal intelligence (themes snapshots, ledgers), activity log. Trigger on 'log this page', 'advance the phase of page X', 'tail the activity log', 'check notella-state health', 'validate notella', 'list pages', 'count pages by phase', 'get the manifest', 'rebuild the page index', 'init the notella facility', 'append to the verdicts ledger', 'get the previous themes snapshot', or any request that reads or writes `~/notella/`. Also trigger automatically whenever another notella-* skill (orchestrator, intake, classify, transcribe, first-pass, actions, diagram, sketch, table, composition, metadata, daily-synthesis, project-synthesis, weekly-synthesis, monthly-synthesis, themes, review, kanban) needs to read or write state — they route through this one. Init a new facility if `~/notella/manifest.yaml` doesn't exist."
 ---
 
 # notella-state — the memory layer
@@ -93,10 +93,11 @@ Refuse to write any event missing required fields.
 | `synthesis.daily`      | A daily intelligence report was written.        |
 | `synthesis.project`    | A project intelligence report was written.     |
 | `synthesis.weekly`     | A weekly synthesis was written.                 |
-| `themes.refreshed`     | Longitudinal themes were rebuilt.               |
+| `synthesis.monthly`    | A monthly synthesis (month in review) was written. |
+| `themes.refreshed`     | Longitudinal themes were rebuilt (a new snapshot under `longitudinal/themes/`). |
 | `inbox.drained`        | The intake skill processed the inbox.           |
 | `manifest.edited`      | The manifest was updated.                       |
-| `correction`           | A correction to an earlier event/artifact.      |
+| `correction`           | A correction to an earlier event/artifact. `evidence.correction_type` says which kind: `reprocess` (a synthesis overwritten with `--reprocess`), `review-verdict` (a human verdict recorded by `notella-review`; the same row is appended to `longitudinal/verdicts.ndjson`), or others defined by the emitting skill. |
 
 ## Operations
 
@@ -117,8 +118,10 @@ Create `~/notella/` with the directory tree from SCHEMA.md, plus seed files:
 ├── events/
 ├── daily/
 ├── weekly/
+├── monthly/           ← monthly/{YYYY-MM}.{json,md}
 ├── projects/
 ├── longitudinal/
+│   └── themes/        ← dated snapshots; longitudinal/themes.json is the latest copy
 ├── logs/
 └── locks/
 ```
@@ -151,11 +154,31 @@ The skill carries reference copies of `manifest.yaml`, `state.json`, `SCHEMA.md`
 
 **list-dailies** → all dates with daily synthesis written.
 
-**get-project-synthesis** `project-slug` `date?` → parsed `projects/{slug}/{date}.json`. If no date given, return the most recent.
+**get-project-synthesis** `project-slug` `date?` `before?` → parsed `projects/{slug}/{date}.json`. If no date given, return the most recent; with `before: YYYY-MM-DD`, return the most recent brief dated strictly before that date (what `notella-project-synthesis` uses to find its predecessor on a same-day re-run).
 
 **list-weeklies** → all ISO weeks with weekly synthesis written.
 
-**get-longitudinal** `kind` → parsed `longitudinal/{kind}.json` (themes | trajectory | patterns).
+**get-weekly** `iso-week` → parsed `weekly/YYYY-Www.json` if it exists, else `null`.
+
+**get-monthly** `YYYY-MM` → parsed `monthly/YYYY-MM.json` if it exists, else `null`.
+
+**list-monthlies** → all `YYYY-MM` months with monthly synthesis written, ascending.
+
+**get-longitudinal** `kind` → parsed `longitudinal/{kind}.json` (themes | trajectory | patterns). For `themes` this is the latest copy; use `get-themes-snapshot` to reach history.
+
+**get-themes-snapshot** `date | latest | previous` → parsed snapshot from `longitudinal/themes/`, plus its `path`:
+
+| Argument     | Returns |
+| ------------ | ------- |
+| `YYYY-MM-DD` | `longitudinal/themes/{date}.json`, or `null`. |
+| `latest`     | The newest file in `longitudinal/themes/` (by filename date). |
+| `previous`   | The newest file whose date is strictly before `latest`'s — i.e. the snapshot before the current one. `null` if only one exists. |
+
+Migration: if `longitudinal/themes/` is empty or absent but a legacy `longitudinal/themes.json` exists, copy it to `longitudinal/themes/{its generated_at date}.json` first (atomic), then answer. `latest` then returns that file and `previous` returns `null`. Snapshots are never modified or deleted by any operation.
+
+**read-ledger** `{file, since?, until?, kind?, limit?}` → parsed rows of `longitudinal/{file}.ndjson` where `file ∈ decisions | commitments | people | verdicts`. Rows are returned in file order; `since`/`until` filter on the row's `date` (decisions, commitments) or `ts` (verdicts); `kind` filters verdicts on `target_kind`; `people` ignores them. Returns `{status: "absent", rows: []}` rather than an error when the file does not exist, so callers can skip a section cleanly. Unparseable lines are skipped and counted in `skipped_lines`. `get-longitudinal {commitments | decisions | people | verdicts}` is accepted as a synonym and returns the rows.
+
+**list-verdicts** `{since?, until?, kind?}` → `read-ledger {file: verdicts, ...}`. The name the synthesis skills and `notella-review` use. Consumers take the latest row per `target_id`.
 
 **tail-activity** `n=50` → last n lines of `logs/activity.ndjson`, parsed.
 
@@ -239,17 +262,45 @@ Under the `state.json` lock:
    {ts, actor, event: "events.batch.ingested", kind, count, max_timestamp}.
 ```
 
-**log-synthesis** `{kind, date|week|project, json, md}` — write the json + md pair to the appropriate location:
+**log-synthesis** `{kind, date|week|month|project, json, md, evidence?, reprocess?}` — write the json + md pair to the appropriate location. `evidence` (optional object) is merged into the emitted `synthesis.*` event's `evidence`; the synthesis skills pass their counts (resolved/carried/new, focus outcomes, …) here:
 
 | kind                | Path                                          |
 | ------------------- | --------------------------------------------- |
 | `synthesis.daily`   | `daily/{date}.{json,md}`                      |
 | `synthesis.weekly`  | `weekly/{iso-week}.{json,md}`                 |
+| `synthesis.monthly` | `monthly/{YYYY-MM}.{json,md}`                 |
 | `synthesis.project` | `projects/{project-slug}/{date}.{json,md}`    |
 
-Update `state.json:last_synthesis_at.{daily,weekly,by_project[slug]}` under the lock. Emit a corresponding event via `log-event`.
+Update `state.json:last_synthesis_at.{daily,weekly,monthly,by_project[slug]}` under the lock. Emit a corresponding event via `log-event`. If the target json already exists, refuse unless the caller passes `reprocess: true`, in which case overwrite both files and also emit a `correction` event (`evidence.correction_type: "reprocess"`, `evidence.target: <path>`).
 
-**log-longitudinal** `{kind, json}` — write `longitudinal/{kind}.json` (themes | trajectory | patterns). Update `state.json:last_longitudinal_at`. Emit `themes.refreshed` event.
+**log-longitudinal** `{kind, json, md?}` — for `kind: themes`:
+
+```
+1. date = json.generated_at as a calendar date in identity.timezone
+2. Atomic write longitudinal/themes/{date}.json         (tmp + rename; same-day rerun overwrites that day's file only)
+3. Atomic copy  → longitudinal/themes.json              (the latest pointer; byte-identical to step 2)
+4. Atomic write longitudinal/themes.md from md          (required for themes; refuse the whole write if md is missing so the md can never lag the json)
+5. Update state.json:last_longitudinal_at under the lock
+6. Emit themes.refreshed (evidence as passed by the caller: counts, snapshot_path, previous_snapshot, delta_counts)
+```
+
+For `kind: trajectory | patterns` the behaviour is unchanged: write `longitudinal/{kind}.json`, update `last_longitudinal_at`, emit `themes.refreshed`. Earlier snapshots under `longitudinal/themes/` are never touched.
+
+**append-ledger** `{file, row}` — append one JSON row to `longitudinal/{file}.ndjson`, `file ∈ decisions | commitments | people | verdicts`.
+
+```
+1. Validate row is a JSON object and serialises to a single line < 4 KB. Refuse otherwise.
+2. Open with O_WRONLY | O_APPEND | O_CREAT; write the line + "\n"; close. No lock (POSIX atomic append, as for the logs).
+3. Return {status: "appended", path, line_no}.
+```
+
+Append-only: there is no edit or delete operation for ledger rows. A row that supersedes an earlier one is a new row (for `verdicts`, a later verdict on the same `target_id` wins). The desktop aggregator rebuilds `decisions`, `commitments` and `people` wholesale with tmp + rename; `append-ledger` is for incremental writers such as `notella-review` on `verdicts`.
+
+**log-verdict** `{row}` → `append-ledger {file: verdicts, row}` after checking the row has `ts, target_kind, target_id, target_text, verdict`. Does not emit the `correction` event — the caller (`notella-review`) logs that itself via `log-event` with `evidence.correction_type: "review-verdict"`, so a duplicate verdict is caught by the event id before the ledger is touched.
+
+**update-manifest** `{add_projects?: [{slug, name, description, keywords}], add_people_aliases?: [{canonical, aliases}], set?: {facility.owner|facility.timezone: value}}` — the only sanctioned manifest write. Takes `locks/manifest.yaml.lock`, validates slug format `^[a-z0-9][a-z0-9-]{1,40}$` and uniqueness, never removes or renames existing entries, writes tmp + rename, appends `manifest.edited` to `activity.ndjson` with the fields changed and a `manifest.yaml.bak-{date}` backup path. Callers (orchestrator project discovery, notella-review) must hold an explicit user confirmation before calling it.
+
+**write-log** `{path, content}` — overwrite a rendered view under `logs/` (today only `logs/review-pending.md`) with tmp + rename. `path` must be inside `logs/` and must not be one of the append-only `.ndjson` files; refuse otherwise. Views are not evidence and are not logged to `activity.ndjson`.
 
 **rebuild-events-index** `date` — read every JSON file in `events/YYYY-MM-DD/`, regenerate `events/YYYY-MM-DD.jsonl`. Use when the index is missing or corrupted.
 
@@ -272,8 +323,9 @@ Update `state.json:last_synthesis_at.{daily,weekly,by_project[slug]}` under the 
 | Page artifact written                | (not logged individually)        |
 | Phase advanced                       | (the page.{phase} event covers it) |
 | Batch ingested                       | `events.batch.ingested`          |
-| Synthesis written                    | `synthesis.{daily,weekly,project}.generated` |
-| Longitudinal rebuilt                 | `longitudinal.{kind}.rebuilt`    |
+| Synthesis written                    | `synthesis.{daily,weekly,monthly,project}.generated` |
+| Longitudinal rebuilt                 | `longitudinal.{kind}.rebuilt` (evidence carries `snapshot_path`) |
+| Ledger row appended                  | (not logged individually)        |
 | Validation run                       | `state.validated`                |
 | Index rebuilt                        | `index.rebuilt`                  |
 | State counters rebuilt               | `state.counters.rebuilt`         |
@@ -284,15 +336,17 @@ Update `state.json:last_synthesis_at.{daily,weekly,by_project[slug]}` under the 
 - **Per-event writes are lock-free** — deterministic ids + atomic file creation = idempotent, safe, parallel.
 - **state.json and manifest.yaml writes use advisory lockfiles** — `locks/state.json.lock`, `locks/manifest.yaml.lock`, 5-minute TTL.
 - **Per-page writes use a per-page lock** — `locks/pages/{page-id}.lock`, 5-minute TTL. Held for one stage's duration.
-- **Append-only logs use O_APPEND** — single-line writes < 4 KB are atomic per POSIX.
-- **Atomic renames for singletons** — `tmp + rename`, never overwrite in place.
+- **Append-only logs and ledgers use O_APPEND** — `logs/*.ndjson`, `events/*.jsonl`, and `longitudinal/{decisions,commitments,people,verdicts}.ndjson`; single-line writes < 4 KB are atomic per POSIX.
+- **Atomic renames for singletons** — `tmp + rename`, never overwrite in place. This includes `longitudinal/themes.json` (copied from the dated snapshot) and the aggregator's wholesale ledger rebuilds.
+- **Snapshots are immutable** — files under `longitudinal/themes/` are written once per refresh day and never edited or removed.
 - **Idempotency is mandatory** — every operation must be safe to retry.
 
 ## What this skill does NOT do
 
 - **Does not intake.** That's `notella-intake`.
 - **Does not run any AI prompt.** That's per-agent skills (`notella-classify`, `notella-transcribe`, etc.).
-- **Does not generate digests, reports, or syntheses.** That's `notella-daily-synthesis`, `-weekly-synthesis`, `-project-synthesis`, `-themes`.
+- **Does not generate digests, reports, or syntheses.** That's `notella-daily-synthesis`, `-weekly-synthesis`, `-monthly-synthesis`, `-project-synthesis`, `-themes`.
+- **Does not judge.** Review verdicts are decided by the user in `notella-review`; this skill only appends the row and the `correction` event.
 - **Does not classify, attribute, or rename projects.** Accepts whatever the caller passes; reattribution comes via correction events.
 - **Does not delete pages or events.** Evidence is immutable. Period.
 - **Does not advance a page's phase autonomously.** The caller (a pipeline skill or the orchestrator) requests the advance after writing the required artifact.
@@ -330,6 +384,18 @@ The orchestrator uses this to find pages that need `notella-transcribe` to run.
 ```
 count-pages --since=2026-04-26 --until=2026-05-03 → {total, by_phase, by_project, by_entry}
 ```
+
+### "Get the previous themes snapshot"
+
+```
+get-themes-snapshot previous → {path: "longitudinal/themes/2026-05-09.json", json: {...}}
+```
+
+`notella-themes` measures its delta against this; `notella-monthly-synthesis` uses it for `theme_arc` start weights.
+
+### "Record a verdict"
+
+Caller (`notella-review`) calls `log-event` with `kind: correction`, `evidence.correction_type: "review-verdict"` and the row as evidence; when that returns `written` (not `duplicate`) it calls `log-verdict {row: {ts, target_kind, target_id, target_text, verdict, note, source_ref}}`, which appends to `longitudinal/verdicts.ndjson`.
 
 ### "Validate the facility"
 

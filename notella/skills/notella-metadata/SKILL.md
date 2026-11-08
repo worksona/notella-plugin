@@ -33,7 +33,7 @@ notella-state get-page-artifact {page-id, artifact: transcribe}
 
 ### Step 3 — Build the prompt
 
-Use notella-the-app's `buildExtractMetadataPrompt()` from `src/lib/prompts/extract-page-metadata.ts` verbatim, with one extension: the `cross_references` array.
+Use the prompt in `references/metadata-prompt.md` — the complete prompt shipped with this plugin. Beyond the original app extraction prompt it carries one structural extension, the `cross_references` array, plus the canonical-attribution and ISO-date instructions described below.
 
 ```
 ## cross_references (array)
@@ -66,7 +66,8 @@ Default: `claude-haiku-4-5` (text-only task; cheap).
 ### Step 5 — Validate
 
 ```yaml
-date: "YYYY-MM-DD" | null
+date: "YYYY-MM-DD" | null       # ISO only — see Step 5a; non-ISO strings fail validation
+date_raw: string | null         # the model's pre-normalization value, kept for audit
 pageNumber: string | null
 title: string                   # 6-10 words
 summary: string                 # 2-4 sentences
@@ -83,11 +84,37 @@ cross_references:
   - kind, target, evidence_span
 ```
 
+### Step 5a — Date normalization (required before validation)
+
+`date` must be ISO `YYYY-MM-DD` or `null`. Nothing else passes validation. The facility has 412 `metadata.json` files whose `date` values mix ISO with handwriting forms such as `"Feb 10/26"`, `"03-02"` and `"'2026-03-0"`, which break the authoritative-date chain daily synthesis depends on. The model is asked for ISO in the prompt, but the skill normalizes deterministically anyway, in this order:
+
+1. **Already ISO** (`^\d{4}-\d{2}-\d{2}$`) and a valid calendar date → keep.
+2. **Strip noise**: leading/trailing quotes, apostrophes, whitespace, trailing `.`; `/` and `.` between numeric fields become `-`.
+3. **Resolve the year** when the form has none. Year source, in order: `meta.yaml:page_date_year`; the year of `meta.yaml:source_capture_time`; the year of `meta.yaml:ingested_at`. If the resolved month-day is more than 14 days after the capture date, use the previous year (a December page photographed in January).
+4. **Recognized forms** (month names match English full or 3-letter abbreviations, case-insensitive):
+
+   | Written | Parse as | Example → result |
+   | --- | --- | --- |
+   | `MM-DD`, `MM/DD`, `M-D`, `M/D` | month, day; year resolved | `03-02` → `2026-03-02`; `2/10` → `2026-02-10` |
+   | `Mon D/YY`, `Mon D/YYYY`, `Mon D, YYYY` | month name, day, year | `Feb 10/26` → `2026-02-10` |
+   | `Mon D`, `D Mon`, `Mon DD`, `DD Mon` | month name, day; year resolved | `10 Feb` → `2026-02-10` |
+   | `YYYY-MM-D`, `YYYY-M-D` | zero-pad | `2026-3-2` → `2026-03-02` |
+   | `YY-MM-DD` with `YY` in 24–29 | expand century | `26-02-10` → `2026-02-10` |
+   | `DD-MM-YYYY`, `DD/MM/YYYY`, `MM/DD/YYYY` | resolve by which field exceeds 12; if both ≤ 12, prefer the order that matches `page_date_stamp` | `10/02/2026` → `2026-02-10` when the stamp is `02-10` |
+
+5. **Truncated or impossible** (`'2026-03-0`, `02-30`, `13-45`, a bare year, a weekday name) → normalization fails.
+6. **Cross-check**: when `meta.yaml:page_date_stamp` is present and the normalized date's `MM-DD` differs from it, keep the normalized date but log `{"kind": "date-stamp-mismatch", ...}` to `meta.yaml:errors`.
+
+**On failure**: do not write the artifact with the unparsed string. Set `date: null`, append `{"actor": "notella-metadata", "kind": "date-normalization-failed", "raw": "<as returned>", "at": <timestamp>}` to `meta.yaml:errors`, and continue — a null date falls through the authoritative-date chain (`transcribe.extractedDate` → `source_capture_time` → `ingested_at`) rather than poisoning it. Apply the same normalization to `transcribe.json:extractedDate` when reading it in Step 6; a non-ISO value there is treated as absent.
+
+Record the pre-normalization string as `date_raw` in `metadata.json` so a reprocess can audit the conversion.
+
 ### Step 6 — Reconcile date
 
-If `metadata.date` is non-null AND differs from `transcribe.json:extractedDate`:
+If `metadata.date` is non-null AND differs from `transcribe.json:extractedDate` (both normalized per Step 5a):
 - If both are confident, prefer the metadata extraction's date but log the disagreement to `meta.yaml:errors` for review.
 - If transcribe date had higher confidence, prefer that one.
+- If only one is a valid ISO date, use it.
 
 ### Step 7 — Mirror into meta.yaml
 
@@ -113,6 +140,8 @@ Standard.
 | Project mention is ambiguous between two manifest projects    | Record both as candidates; surface in pipeline.ndjson; user can clarify by editing manifest aliases. |
 | Person mention has no manifest match                          | Record as written; user may add to `manifest.people_aliases` later. |
 | Cross-reference target is fuzzy ("see last week's note")      | Record kind=date-ref with target as best-effort ISO date; downstream may resolve via search. |
+| `date` cannot be normalized to ISO (`"'2026-03-0"`, `"02-30"`)  | Write `date: null`, keep the raw string in `date_raw`, append a `date-normalization-failed` warning to `meta.yaml:errors`; the authoritative-date chain falls through to transcribe / capture time. |
+| `date` disagrees with `meta.yaml:page_date_stamp`              | Keep the normalized date; log `date-stamp-mismatch` to `meta.yaml:errors` for review. |
 
 ## What this skill does NOT do
 
@@ -145,3 +174,5 @@ Standard.
 
 - `references/metadata-prompt.md` — full prompt with cross_references extension.
 - `references/canonical-attribution.md` — how alias matching works.
+
+Date normalization rules live in Step 5a above; they are deliberately in the SKILL.md because every run applies them.

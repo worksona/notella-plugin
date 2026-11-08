@@ -36,7 +36,7 @@ Verify `phase >= first-pass-done` and `route_plan` includes `action_decision`. S
 
 ### Step 3 — Build the prompt
 
-Use notella-the-app's `ACTIONS_SYSTEM` and `buildActionsPrompt()` from `src/lib/prompts/actions.ts` verbatim. Pass the transcript and the first-pass `action_intelligence` array as context (so the actions skill can be exhaustive without contradicting first-pass on the obvious ones).
+Use the prompt in `references/actions-prompt.md` — the complete system and user prompt shipped with this plugin. It passes the transcript and the first-pass `action_intelligence` array as context (so the actions skill can be exhaustive without contradicting first-pass on the obvious ones), plus marginalia and emphasised spans:
 
 ```
 ## First-pass action_intelligence (for grounding)

@@ -40,7 +40,7 @@ notella-state acquire-page-lock {page-id, actor: notella-diagram@<version>}
 
 ### Step 3 — Build the prompt
 
-Use notella-the-app's `DIAGRAM_SYSTEM` and `buildDiagramPrompt()` from `src/lib/prompts/diagram.ts` verbatim, with one extension: each node and edge gets a `visual_element_id` so `composition.json` can reference it.
+Use the prompt in `references/diagram-prompt.md` — the complete system and user prompt shipped with this plugin. Beyond the original app prompt it carries one extension: each node and edge gets a `visual_element_id` (and a `bbox_pct`) so `composition.json` can reference it. Role and relation vocabularies are defined in `references/node-role-rules.md` and `references/edge-relation-rules.md`.
 
 Include `derived/page.jpg` and the transcript text (for label-disambiguation grounding).
 

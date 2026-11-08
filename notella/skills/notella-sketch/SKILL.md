@@ -36,53 +36,18 @@ Verify `phase >= transcribed` and `route_plan` includes `sketch_interpretation`.
 
 ### Step 3 — Build the prompt
 
-System prompt:
+Use the prompt in `references/sketch-prompt.md` — the complete system and user prompt shipped with this plugin (no app counterpart; the prompt is native to the plugin). In outline, the system prompt defines a sketch as a drawing that is NOT a structural diagram (no nodes/edges/swim-lanes), tells the model to skip flowcharts, mind-maps, tables and matrices (and to list borderline drawings in `ambiguities` — see `references/sketch-vs-diagram.md`), and asks for one entry per sketch:
 
-```
-You are a sketch-interpretation specialist. Your job is to examine handwritten
-notebook page imagery and identify freeform sketches — drawings that are NOT
-structural diagrams (no clear nodes/edges/swim-lanes). A sketch is a face, a
-scene, a process metaphor, a doodled icon, an explanatory illustration, a
-self-portrait, a memory-aid drawing.
+- `id` (`sk_NNN`), `bbox_pct`
+- `subject` — short noun phrase
+- `technique` — line | shading | cartoon | technical | mixed
+- `intent` — decorative | illustrative | explanatory | exploratory | mnemonic
+- `elements[]` — kind, bbox_pct, label, visual_element_id (`sk_NNN_eM`)
+- `text_association` — adjacent_to_zone (composition zone id or null), relationship explains | illustrates | decorates | unrelated
+- `affective_signal` — calm | energetic | playful | serious | uncertain | frustrated, read from execution not subject (`references/affective-signal-rules.md`)
+- `confidence`
 
-Skip anything you would call a flowchart, mind-map, network diagram, table, or
-matrix — those go to a different specialist.
-
-For each sketch on the page, produce one entry:
-
-## subject
-A short noun phrase: "human face", "abstract scene", "process metaphor with
-figures", "doodled gear", "tree with branches", "self-portrait".
-
-## technique
-line | shading | cartoon | technical | mixed
-
-## intent
-- decorative   — purely decorative; no semantic load
-- illustrative — illustrates an adjacent text passage
-- explanatory  — communicates an idea independently
-- exploratory  — author working something out visually
-- mnemonic     — memory aid attached to a name, project, or concept
-
-## elements (array)
-Distinct elements within the sketch: figures, shapes, lines, annotations.
-For each: kind, bbox_pct, label (if any), visual_element_id.
-
-## text_association
-- adjacent_to_zone: zone id from composition.json (or null if not yet known)
-- relationship: explains | illustrates | decorates | unrelated
-
-## affective_signal
-calm | energetic | playful | serious | uncertain | frustrated
-Read from line weight, repetition, scratch-outs, tightness vs looseness.
-
-## confidence
-0.0-1.0 in the subject identification.
-
-If no sketches are present, return sketches: [] and sketch_count: 0.
-```
-
-User prompt: `"Identify and interpret every sketch on this page. Return JSON matching SketchSchema."` Include the image and a transcript excerpt for grounding.
+plus `sketch_count` and `ambiguities[]`. The user prompt carries the classification context, a transcript excerpt and the composition zones when available. Include the image.
 
 ### Step 4 — Call the model
 

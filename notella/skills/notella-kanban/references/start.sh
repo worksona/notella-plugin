@@ -1,31 +1,34 @@
 #!/usr/bin/env bash
-# notella-kanban start — start the dev server (idempotent), open browser.
-# Usage:  start.sh [--path PATH] [--url URL_PATH]
+# notella-kanban start — start the Next.js dev server (idempotent), open the browser.
+# The dev server is the developer surface; for viewing use references/app.sh.
+# Usage:  start.sh [--path PATH] [--url URL_PATH] [--nl-dir PATH]
 #   --path PATH     override KANBAN_DIR (default: auto-resolve)
 #   --url URL_PATH  open this path on localhost:3344 (default: /)
+#   --nl-dir PATH   facility to serve (default: $NL_DIR, else ~/notella)
 
 set -euo pipefail
 
 PORT=3344
 URL_PATH="/"
 KANBAN_DIR=""
+NL="${NL_DIR:-$HOME/notella}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --path) KANBAN_DIR="$2"; shift 2 ;;
-    --url)  URL_PATH="$2"; shift 2 ;;
+    --path)   KANBAN_DIR="$2"; shift 2 ;;
+    --url)    URL_PATH="$2"; shift 2 ;;
+    --nl-dir) NL="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-# Resolve KANBAN_DIR from candidate paths if not supplied
+# Resolve KANBAN_DIR: --path, $NOTELLA_DESKTOP_DIR, canonical. No legacy locations.
 resolve_dir() {
   for candidate in \
     "${NOTELLA_DESKTOP_DIR:-}" \
-    "${HOME}/WORKSONA/notella-desktop" \
-    "${HOME}/notella/kanban" \
-    "${HOME}/Desktop/notella/kanban"
+    "${HOME}/WORKSONA/notella-desktop"
   do
+    [ -n "$candidate" ] || continue
     if [ -f "${candidate}/package.json" ] && \
        grep -q '"name": *"notella-kanban"' "${candidate}/package.json" 2>/dev/null; then
       echo "$candidate"
@@ -37,7 +40,8 @@ resolve_dir() {
 
 if [ -z "$KANBAN_DIR" ]; then
   if ! KANBAN_DIR="$(resolve_dir)"; then
-    echo "error: notella-kanban scaffold not found at ~/WORKSONA/notella-desktop, ~/notella/kanban or ~/Desktop/notella/kanban" >&2
+    echo "error: notella-desktop repo not found at ~/WORKSONA/notella-desktop (or \$NOTELLA_DESKTOP_DIR)" >&2
+    echo "  git clone it there and run npm install, or pass --path" >&2
     exit 3
   fi
 fi
@@ -49,7 +53,7 @@ mkdir -p "$PID_DIR"
 
 # Already running?
 if curl -fsS "http://localhost:${PORT}/" >/dev/null 2>&1; then
-  echo "notella-kanban already running on port ${PORT}"
+  echo "notella dev server already running on port ${PORT}"
   open "http://localhost:${PORT}${URL_PATH}" >/dev/null 2>&1 || true
   exit 0
 fi
@@ -60,21 +64,23 @@ if [ ! -d "${KANBAN_DIR}/node_modules" ]; then
   npm install --prefix "$KANBAN_DIR" >&2
 fi
 
-# Start in background
-nohup npm run dev --prefix "$KANBAN_DIR" > "$LOG_FILE" 2>&1 &
+# Start in background with the facility path in the environment
+NL_DIR="$NL" nohup npm run dev --prefix "$KANBAN_DIR" > "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
+echo "$NL" > "${PID_DIR}/dev.nl_dir"
 
 # Wait for port
 for _ in $(seq 1 40); do
   sleep 0.25
   if curl -fsS "http://localhost:${PORT}/" >/dev/null 2>&1; then
     open "http://localhost:${PORT}${URL_PATH}" >/dev/null 2>&1 || true
-    echo "notella-kanban started"
-    echo "  path: $KANBAN_DIR"
-    echo "  port: $PORT"
-    echo "  pid:  $(cat $PID_FILE)"
-    echo "  url:  http://localhost:${PORT}${URL_PATH}"
-    echo "  log:  $LOG_FILE"
+    echo "notella dev server started"
+    echo "  path:     $KANBAN_DIR"
+    echo "  port:     $PORT"
+    echo "  pid:      $(cat "$PID_FILE")"
+    echo "  url:      http://localhost:${PORT}${URL_PATH}"
+    echo "  facility: $NL"
+    echo "  log:      $LOG_FILE"
     exit 0
   fi
 done

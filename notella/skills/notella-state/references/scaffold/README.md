@@ -10,8 +10,9 @@ The unit of work is a **page**. The unit of value is **synthesis across pages ov
 ┌──────────────────────────────────────────────────────────────────┐
 │  Layer 3 — Connective                                            │
 │    notella-daily-synthesis, -weekly-synthesis,                   │
-│    -project-synthesis, -themes                                   │
-│    → daily/*, weekly/*, projects/{slug}/*, longitudinal/*        │
+│    -monthly-synthesis, -project-synthesis, -themes, -review      │
+│    → daily/*, weekly/*, monthly/*, projects/{slug}/*,            │
+│      longitudinal/themes/*, longitudinal/*.ndjson                │
 ├──────────────────────────────────────────────────────────────────┤
 │  Layer 2 — Semantic (what the page means)                        │
 │    notella-metadata, notella-first-pass, notella-actions         │
@@ -58,7 +59,9 @@ Future: scheduled folder-watch, photo-app integration, scanner integration. For 
 | `notella-daily-synthesis`      | All pages indexed to a date → daily intelligence brief.   |
 | `notella-project-synthesis`    | All pages attributed to a project → project intelligence. |
 | `notella-weekly-synthesis`     | A week of daily syntheses → weekly report.                |
-| `notella-themes`               | Longitudinal theme detection across all pages.            |
+| `notella-monthly-synthesis`    | A month of weeklies + two themes snapshots + ledgers → month in review with a scored forecast. |
+| `notella-themes`               | Longitudinal theme detection across all pages; dated snapshots with a measured delta. Monthly. |
+| `notella-review`               | Your verdicts (done / drop / carry / wrong) on commitments, questions, focus and forecasts → `verdicts.ndjson`. |
 
 ## Page lifecycle
 
@@ -74,7 +77,7 @@ The orchestrator queries which pages are stuck in each phase and re-queues them.
 
 1. **Evidence is immutable.** Once a page artifact or event file is written, it is never edited. Corrections go in as new events.
 2. **All writes flow through `notella-state`.** No skill mutates `~/notella/` directly except `notella-state` itself.
-3. **Pages are durable; syntheses are regenerable.** Delete `daily/`, `weekly/`, `projects/`, `longitudinal/` and they can be rebuilt from `pages/`.
+3. **Pages are durable; syntheses are regenerable.** Delete `daily/`, `weekly/`, `monthly/`, `projects/`, `longitudinal/` and they can be rebuilt from `pages/` — except `longitudinal/verdicts.ndjson`, which holds your own judgements and cannot be regenerated.
 4. **Idempotent intake.** Re-running intake on the same source files produces zero new pages.
 5. **Local first.** Nothing leaves this directory unless an export skill explicitly does so. `raw/` images contain personal handwriting.
 
@@ -85,6 +88,26 @@ The orchestrator queries which pages are stuck in each phase and re-queues them.
 - `SCHEMA.md` — canonical schema for every file in the facility
 - `CONCURRENCY.md` — write protocol, locking, conflict resolution
 - `README.md` — this file
+
+## Key paths
+
+| Path | What lives there | Written by |
+| ---- | ---------------- | ---------- |
+| `pages/{page-id}/` | the durable page record and its Layer 1/2 artifacts | pipeline skills |
+| `events/YYYY-MM-DD/` + `.jsonl` | atomic evidence, one JSON per event | every skill via `notella-state` |
+| `daily/{YYYY-MM-DD}.{json,md}` | daily intelligence brief | `notella-daily-synthesis` |
+| `weekly/{YYYY-Www}.{json,md}` | weekly brief | `notella-weekly-synthesis` |
+| `monthly/{YYYY-MM}.{json,md}` | month in review — theme arc, aging, people, forecast scorecard, watchlist | `notella-monthly-synthesis` |
+| `projects/{slug}/{date}.{json,md}` | project intelligence | `notella-project-synthesis` |
+| `longitudinal/themes/{date}.json` | themes snapshot history, one per refresh | `notella-themes` |
+| `longitudinal/themes.json` | copy of the latest snapshot (read this) | `notella-themes` |
+| `longitudinal/themes.md` | rendered from `themes.json` on every refresh | `notella-themes` |
+| `longitudinal/decisions.ndjson` | every decision from the dailies | desktop aggregator |
+| `longitudinal/commitments.ndjson` | every action with a state annotation | desktop aggregator |
+| `longitudinal/people.ndjson` | one row per person: first/last seen, mentions by month, projects | desktop aggregator |
+| `longitudinal/verdicts.ndjson` | your done / drop / carry / wrong verdicts (append-only) | `notella-review` |
+| `logs/review-pending.md` | what is waiting for a verdict | `notella-review` |
+| `logs/activity.ndjson`, `pipeline.ndjson`, `llm-calls.ndjson` | audit trails | `notella-state` |
 
 ## How processing actually runs
 

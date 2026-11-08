@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# notella-kanban stop — kill the dev server.
+# notella-kanban stop — stop the Next.js dev server. Never quits Notella.app.
 
 set -euo pipefail
 
@@ -16,10 +16,9 @@ done
 resolve_dir() {
   for candidate in \
     "${NOTELLA_DESKTOP_DIR:-}" \
-    "${HOME}/WORKSONA/notella-desktop" \
-    "${HOME}/notella/kanban" \
-    "${HOME}/Desktop/notella/kanban"
+    "${HOME}/WORKSONA/notella-desktop"
   do
+    [ -n "$candidate" ] || continue
     if [ -f "${candidate}/package.json" ] && \
        grep -q '"name": *"notella-kanban"' "${candidate}/package.json" 2>/dev/null; then
       echo "$candidate"
@@ -38,6 +37,7 @@ if [ -n "$KANBAN_DIR" ]; then
   PID_FILE="${KANBAN_DIR}/.runtime/dev.pid"
 fi
 
+KILLED=""
 if [ -n "$PID_FILE" ] && [ -f "$PID_FILE" ]; then
   PID="$(cat "$PID_FILE")"
   if kill -0 "$PID" 2>/dev/null; then
@@ -46,8 +46,9 @@ if [ -n "$PID_FILE" ] && [ -f "$PID_FILE" ]; then
     if kill -0 "$PID" 2>/dev/null; then
       kill -9 "$PID" 2>/dev/null || true
     fi
+    KILLED="$PID"
   fi
-  rm -f "$PID_FILE"
+  rm -f "$PID_FILE" "${KANBAN_DIR}/.runtime/dev.nl_dir"
 fi
 
 # Belt and suspenders — kill anything bound to the port
@@ -58,5 +59,9 @@ if curl -fsS "http://localhost:${PORT}/" >/dev/null 2>&1; then
   exit 5
 fi
 
-echo "notella-kanban stopped"
+echo "notella dev server stopped"
+[ -n "$KILLED" ] && echo "  killed PID $KILLED"
 echo "  port ${PORT} is free"
+if pgrep -f "Notella.app/Contents/MacOS" >/dev/null 2>&1; then
+  echo "  Notella.app: still running (not touched)"
+fi

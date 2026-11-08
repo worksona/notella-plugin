@@ -1,7 +1,7 @@
 {
   "name": "notella",
-  "description": "The notella pipeline: 17 Claude skills that turn photographed handwritten notebook pages in ~/notella/ into transcripts, structure, actions, daily/weekly/project syntheses and longitudinal themes. Operates the local notella-state facility; pairs with notella-desktop.",
-  "version": "0.1.0",
+  "description": "The notella pipeline: 19 Claude skills that turn photographed handwritten notebook pages in ~/notella/ into transcripts, structure, actions, daily/weekly/monthly/project syntheses, longitudinal themes and a human review loop. Operates the local notella-state facility; pairs with notella-desktop.",
+  "version": "0.2.0",
   "author": {
     "name": "Worksona",
     "url": "https://github.com/worksona"

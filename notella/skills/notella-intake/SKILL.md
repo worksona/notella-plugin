@@ -258,6 +258,10 @@ evidence:
   errors: []
 ```
 
+## `--redecode {page-id}`
+
+Rebuilds `derived/page.jpg` and `derived/thumb.jpg` from the immutable `raw/page.*` (same HEIC and thumbnail rules as above) without touching the page id, phase, `meta.yaml` or any artifact. Used by the orchestrator's stuck-page rules when transcription confidence stays low because of a bad decode (rotation, blur from a poor first conversion). Logs one `pipeline.ndjson` line with `action: redecode`; emits no event.
+
 ## Idempotency
 
 Every operation is idempotent:

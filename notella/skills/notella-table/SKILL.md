@@ -35,51 +35,15 @@ Verify `phase >= transcribed` and `route_plan` includes `table_extraction`.
 
 ### Step 3 — Build the prompt
 
-System prompt:
+Use the prompt in `references/table-prompt.md` — the complete system and user prompt shipped with this plugin (no app counterpart; the prompt is native to the plugin). In outline, the system prompt asks the model to reconstruct the grid the author intended and produce, per table:
 
-```
-You are a table-extraction specialist for handwritten notebook pages. Identify
-every table, matrix, grid, or 2D-structured layout on the page and extract its
-content as cells.
+- `id` (`tb_NNN`), `bbox_pct`
+- `structural_type` — comparison-matrix | decision-grid | eisenhower | 2x2 | data-table | unknown (`references/structural-type-rules.md`)
+- `column_headers[]`, `row_labels[]`, optional `axis_labels`
+- `cells[]` — 0-indexed row/col from the first data row/column, verbatim `content`, `visual_element_id` (`tb_NNN_rRcC`); empty cells omitted; spanning cells take the smallest enclosing row/col
+- `units`, `interpretation` (one sentence naming what is compared or decided)
 
-For each table, produce:
-
-## structural_type
-comparison-matrix | decision-grid | eisenhower | 2x2 | data-table | unknown
-- comparison-matrix : rows are options, columns are criteria
-- decision-grid     : actions vs conditions
-- eisenhower        : urgent/important quadrants
-- 2x2               : any 2-axis 2-value grid (BCG, RACI subset, etc.)
-- data-table        : straightforward tabular data
-- unknown           : structure unclear
-
-## column_headers
-Array of strings, in left-to-right order. Empty if no headers.
-
-## row_labels
-Array of strings, in top-to-bottom order. Empty if no row labels.
-
-## cells
-For each cell that has content:
-- row: 0-indexed
-- col: 0-indexed
-- content: verbatim text of the cell
-- visual_element_id: reference for cross-artifact linking
-
-Cells outside the canonical row/col grid (e.g. a header that spans 2 columns)
-get the smallest enclosing row/col.
-
-## units
-String describing units if applicable ("USD", "FTE-weeks", "score 1-5"), else null.
-
-## interpretation
-One sentence describing what the table is comparing or asking. This is the
-analytical hook for downstream synthesis.
-
-Return ONLY valid JSON matching TableSchema.
-```
-
-Include `derived/page.jpg` and the transcript text.
+plus `table_count`. The user prompt carries the classification context and the transcriber's reading (including any markdown tables it reconstructed) as grounding for illegible cells, while the image is trusted for grid structure. Include `derived/page.jpg`.
 
 ### Step 4 — Call the model
 

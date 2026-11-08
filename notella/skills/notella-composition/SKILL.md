@@ -42,71 +42,16 @@ notella-state acquire-page-lock {page-id, actor: notella-composition@<version>}
 
 ### Step 3 — Build the prompt
 
-System prompt (paraphrased):
+Use the prompt in `references/composition-prompt.md` — the complete system and user prompt shipped with this plugin (this skill has no app counterpart; the prompt is native to the plugin). In outline, the system prompt asks for:
 
-```
-You are a page-composition analyst. Your job is to read a notebook page image
-and map its macro spatial structure.
+- `zones[]` — 2-8 regions, each with `id`, `region` (vocabulary in `references/zone-region-vocabulary.md`), `bbox_pct`, `content_summary`, `dominant_kind`, `visual_element_ids`
+- `dominant_flow` — top-down | left-right | right-left | bottom-up | radial | scattered | centered | none
+- `reading_order` — zone ids in traversal order
+- `visual_hierarchy[]` — prominence 1-5 per zone with reasoning
+- `cross_zone_connections[]` — arrow | line | dotted-line | implicit | repeated-motif, with optional `evidence_element_id`
+- `whitespace_signal` — dense | balanced | sparse | very-sparse
 
-You will produce a composition map covering:
-
-## zones (array)
-Identify 2-8 distinct zones on the page. A zone is a coherent region of content
-— a paragraph block, a diagram region, a table, a margin annotation, a sketch
-area. For each zone:
-- id: zN (sequential)
-- region: top | top-left | top-right | left | center | right | bottom |
-          bottom-left | bottom-right | margin-top | margin-bottom |
-          margin-left | margin-right | full-width
-- bbox_pct: [x0, y0, x1, y1] in 0.0-1.0 with top-left origin
-- content_summary: one sentence
-- dominant_kind: text | diagram | sketch | table | mixed | empty
-- visual_element_ids: any visual_element ids referenced from sibling artifacts
-
-## dominant_flow
-The macro reading direction:
-top-down | left-right | right-left | bottom-up | radial | scattered |
-centered | none
-
-## reading_order
-The order in which a reader would naturally traverse the zones (an array of
-zone ids).
-
-## visual_hierarchy
-For each zone, a prominence score 1-5 with a short reasoning sentence:
-- 5 = dominates the page (large size, central position, heavy emphasis)
-- 1 = peripheral or fine-print
-
-## cross_zone_connections
-Arrows, lines, or implicit connections between zones:
-- from: zone id
-- to: zone id
-- kind: arrow | line | dotted-line | implicit | repeated-motif
-- evidence_element_id: optional visual_element id
-
-## whitespace_signal
-Overall density of the page:
-dense | balanced | sparse | very-sparse
-
-Return ONLY valid JSON matching the CompositionSchema.
-```
-
-User prompt:
-
-```
-Map the spatial composition of this page. Return JSON matching CompositionSchema.
-
-## Transcript context (for grounding zone content_summary)
-{cleanedTranscript truncated to 2000 chars}
-
-## Sibling artifacts present
-- diagram.json: <yes|no, with N diagrams>
-- sketch.json: <yes|no, with N sketches>
-- table.json: <yes|no, with N tables>
-
-If sibling artifacts are present, reference their visual_element ids in
-zones[].visual_element_ids when they overlap.
-```
+The user prompt carries a 2000-char transcript excerpt for grounding and the presence/absence (with element ids) of sibling `diagram.json` / `sketch.json` / `table.json`, so zones can reference `ve_d*`, `sk_*`, `tb_*` ids without inventing any.
 
 Include `derived/page.jpg`.
 

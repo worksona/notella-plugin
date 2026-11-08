@@ -5,6 +5,7 @@
   "last_synthesis_at": {
     "daily": null,
     "weekly": null,
+    "monthly": null,
     "by_project": {}
   },
   "last_longitudinal_at": null,

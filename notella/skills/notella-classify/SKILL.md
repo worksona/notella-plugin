@@ -41,7 +41,7 @@ notella-state acquire-page-lock {page-id, actor: notella-classify@<version>}
 
 ### Step 3 — Build the prompt
 
-System prompt (`CLASSIFY_PAGE_SYSTEM`) — see `references/classify-prompt.md`. Identical to notella-the-app's `src/lib/prompts/classify.ts`, with three additions to the route_plan vocabulary:
+System prompt (`CLASSIFY_PAGE_SYSTEM`) — see `references/classify-prompt.md`, the complete prompt shipped with this plugin. It carries three additions to the route_plan vocabulary beyond the original app prompt (each entry is defined in `references/route-plan-vocab.md`):
 
 ```
 - sketch_interpretation       — include when the page contains freeform sketches (figures, scenes, doodles) distinct from structural diagrams
@@ -49,7 +49,7 @@ System prompt (`CLASSIFY_PAGE_SYSTEM`) — see `references/classify-prompt.md`. 
 - composition                 — always include
 ```
 
-User prompt: `"Classify this page. Return JSON matching the PageClassificationSchema exactly."`
+User prompt: `"Classify this page. Return JSON matching the PageClassificationSchema exactly. Inspect the full image before deciding. Consider margins, sketches, tables, checkboxes, and the dominant content type."`
 
 Include `derived/page.jpg` as the image input.
 

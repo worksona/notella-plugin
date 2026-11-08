@@ -83,6 +83,7 @@ model_defaults:
   daily_synthesis: claude-opus-4-6
   project_synthesis: claude-opus-4-6
   weekly_synthesis: claude-opus-4-6
+  monthly_synthesis: claude-opus-4-6      # falls back to `themes` when absent
   themes: claude-opus-4-6
 
 # Provider keys — references, never values.
@@ -97,7 +98,8 @@ cadence:
   inbox_drain: "on-invocation"          # drained whenever orchestrator runs
   daily_synthesis: "20:00"              # end-of-day synthesis target
   weekly_synthesis: "Monday 08:00"
-  longitudinal_refresh: "Sunday 22:00"
+  longitudinal_refresh: "1st 05:00"     # monthly: themes refresh, then monthly synthesis
+  monthly_synthesis: "1st 05:30"        # after longitudinal_refresh so both snapshots exist
 
 # Phase machine — declarative; notella-state validates against this.
 phases:

@@ -52,20 +52,33 @@
 │   ├── 2026-W18.md
 │   └── 2026-W18.json
 │
+├── monthly/                     # month-in-review briefs
+│   ├── 2026-05.md
+│   └── 2026-05.json
+│
 ├── projects/
 │   └── {project-slug}/
 │       ├── 2026-05-02.md
 │       └── 2026-05-02.json
 │
-├── longitudinal/                # rolling intelligence (rebuilt weekly)
-│   ├── themes.json
+├── longitudinal/                # rolling intelligence (themes rebuilt monthly; ledgers after every daily)
+│   ├── themes/                  # one snapshot per refresh — history, never edited
+│   │   ├── 2026-05-09.json
+│   │   └── 2026-06-01.json
+│   ├── themes.json              # byte-identical copy of the latest snapshot (the path tools read)
+│   ├── themes.md                # rendered from themes.json on every refresh
 │   ├── trajectory.json
-│   └── patterns.json
+│   ├── patterns.json
+│   ├── decisions.ndjson         # ledger — every daily new_decisions row (aggregator, rebuilt wholesale)
+│   ├── commitments.ndjson       # ledger — every action with a state annotation (aggregator, rebuilt wholesale)
+│   ├── people.ndjson            # ledger — one row per canonical person (aggregator, rebuilt wholesale)
+│   └── verdicts.ndjson          # ledger — human verdicts from notella-review (append-only)
 │
 ├── logs/
 │   ├── activity.ndjson          # every state mutation
 │   ├── pipeline.ndjson          # page-stage runs (was the queue page)
-│   └── llm-calls.ndjson         # full audit trail (was the history page)
+│   ├── llm-calls.ndjson         # full audit trail (was the history page)
+│   └── review-pending.md        # items awaiting a verdict, rendered by notella-review
 │
 └── locks/
     ├── state.json.lock
@@ -413,10 +426,11 @@ high_confidence_count: int
 | `synthesis.daily`       | Daily intelligence written.                      |
 | `synthesis.project`     | Project intelligence written.                    |
 | `synthesis.weekly`      | Weekly synthesis written.                        |
-| `themes.refreshed`      | Longitudinal themes rebuilt.                     |
+| `synthesis.monthly`     | Monthly synthesis (month in review) written.     |
+| `themes.refreshed`      | Longitudinal themes rebuilt; evidence carries `snapshot_path`, `previous_snapshot`, `delta_counts`. |
 | `inbox.drained`         | Intake processed the inbox.                      |
 | `manifest.edited`       | Manifest updated.                                |
-| `correction`            | Correction to an earlier event/artifact.         |
+| `correction`            | Correction to an earlier event/artifact. `evidence.correction_type` distinguishes `reprocess` (a synthesis overwritten), `review-verdict` (a human verdict from `notella-review`, mirrored in `longitudinal/verdicts.ndjson`), and others. |
 
 ---
 
@@ -430,6 +444,7 @@ high_confidence_count: int
   "last_synthesis_at": {
     "daily": null,
     "weekly": null,
+    "monthly": null,
     "by_project": {}
   },
   "last_longitudinal_at": null,
@@ -482,9 +497,111 @@ The matching `daily/YYYY-MM-DD.md` is the human-readable narrative.
 
 Same shape as the existing notella weekly report: executive summary, key themes evolved, projects progressed, people and relationships, ideas and insights, action items, suggested focus for next week.
 
+## Monthly synthesis (`monthly/YYYY-MM.json`)
+
+Written by `notella-monthly-synthesis` after the month closes (or with `--partial`). Counts, buckets, weights, directions, people lists and scorecard rows are pre-computed from data; the model writes notes, flags, outcomes, the watchlist and the narrative.
+
+```yaml
+schema_version: "0.1.0"
+month: "YYYY-MM"
+generated_at: ISO-8601
+partial: bool
+weeks_covered: ["YYYY-Www"]                 # weeklies read (ISO weeks overlapping the month)
+weeks_missing: ["YYYY-Www"]
+sources:
+  previous_monthly: "monthly/YYYY-MM.json" | null
+  themes_current: "longitudinal/themes/YYYY-MM-DD.json" | null
+  themes_previous: "longitudinal/themes/YYYY-MM-DD.json" | null
+  themes_current_stale: bool
+  ledgers: { decisions: bool, commitments: bool, people: bool, verdicts: bool }
+pages_total: int
+pages_by_project: { slug: int }             # "(none)" for unattributed
+pages_by_weekday: { Mon: int, Tue: int, Wed: int, Thu: int, Fri: int, Sat: int, Sun: int }
+theme_arc:
+  - theme: string
+    start_weight: primary | secondary | emerging | fading | null
+    end_weight: primary | secondary | emerging | fading | null
+    direction: rising | held | fell | new | gone
+    evidence_pages: [page-id]               # ≤ 5
+    note: string
+decisions_made:
+  - { decision: string, date: "YYYY-MM-DD", page_id: string, revisited: bool, revisit_note: string }
+commitments_aging:
+  buckets: { "<7d": int, "7-30d": int, "30-90d": int, ">90d": int }
+  oldest:                                   # ≤ 5
+    - { task: string, source_date: "YYYY-MM-DD", state: proposed | owner_confirmed | in_progress }
+  closed_this_month: int
+  dropped_this_month: int
+people_movement:
+  new: [string]                             # first_seen in the month
+  steady: [string]                          # mentioned this month and in ≥ 1 earlier month
+  gone_quiet: [string]                      # mentioned in ≥ 2 earlier months, zero this month
+forecast_scorecard:                         # one row per previous monthly watchlist item and per previous snapshot emergent_topic
+  - { prediction: string,
+      source: "monthly/YYYY-MM.json#next_month_watchlist[i]" | "longitudinal/themes/YYYY-MM-DD.json#emergent_topics[i]",
+      outcome: held | partial | missed | unknown, evidence: string }
+next_month_watchlist:                       # 3–5, each falsifiable; verdicts key on hash(prediction) and source_ref
+  - { id: "YYYY-MM-w1", prediction: string, signal_to_watch: string, falsified_if: string }
+narrative: string                           # 3–6 paragraphs
+suggested_focus_next_month: [string]        # 3–5
+notes: [string]
+```
+
+The matching `monthly/YYYY-MM.md` is titled "Month in review — {Month YYYY}" with sections Narrative, Theme arc, Forecast scorecard, Decisions, Commitments aging, People movement, Watchlist for next month, Suggested focus.
+
 ## Project synthesis (`projects/{slug}/{date}.json`)
 
 Carries notella's existing `ProjectIntelligenceSchema`: timeline_summary, commitments_assessment, drift_signals, blockers, momentum_assessment, next_actions, risk_summary.
+
+## Themes snapshot (`longitudinal/themes/YYYY-MM-DD.json`, copied to `longitudinal/themes.json`)
+
+Written by `notella-themes`, one file per refresh day. `longitudinal/themes.json` is always a byte-identical copy of the newest snapshot; `longitudinal/themes.md` is rendered from it on the same run. Snapshots are never edited or deleted.
+
+```yaml
+schema_version: "0.2.0"
+generated_at: ISO-8601
+corpus_summary:
+  pages_total: int
+  date_range: { since: "YYYY-MM-DD", until: "YYYY-MM-DD" }   # since = earliest page's authoritative date unless --since narrowed it
+  top_projects: [string]
+delta:                                      # deterministic; computed against the previous snapshot before the model runs
+  previous_snapshot: "longitudinal/themes/YYYY-MM-DD.json" | null
+  pages_added_since: int
+  themes_new: [string]
+  themes_gone: [string]
+  weight_changes: [{ theme: string, from: weight, to: weight }]
+  trajectory_changes: [{ theme: string, from: trajectory, to: trajectory }]
+  emergent_promoted: [string]               # emergent_topics last time, themes now
+  emergent_dropped: [string]
+delta_notes: string                         # model's explanation of any disagreement with the delta; empty when none
+themes:
+  - { name, description, weight: primary | secondary | emerging | fading, first_seen, last_seen, pages_count,
+      trajectory: rising | steady | declining | episodic, evidence_pages: [page-id], related_themes: [string] }
+emergent_topics:
+  - { name, first_seen, pages_count, why_notable }
+fading_topics:
+  - { name, last_substantive_mention, prior_weight, why_fading_might_matter }
+persistent_open_questions:
+  - { question, first_raised, times_raised, latest_page }
+conceptual_evolution:
+  - { concept, evolution_summary, key_pages: [page-id] }
+momentum_summary: string
+```
+
+## Ledgers (`longitudinal/*.ndjson`)
+
+One JSON object per line, each line < 4 KB. `decisions`, `commitments` and `people` are rebuilt wholesale (tmp + rename) by the desktop aggregator after daily synthesis; `verdicts` is append-only, written by `notella-review` through `notella-state append-ledger`. All four are read by `notella-monthly-synthesis`.
+
+| File | Row shape | Writer |
+| ---- | --------- | ------ |
+| `decisions.ndjson` | `{ date, page_id, description, source }` | aggregator |
+| `commitments.ndjson` | `{ task_id, task, date, page_id, owner_candidates, priority, state: proposed \| owner_confirmed \| in_progress \| done \| abandoned, source }` — `task_id = hash(task)` (FNV-1a 32-bit over the normalised text, as defined in `notella-review`); older rows carry `description` in place of `task` and no `task_id` | aggregator |
+| `people.ndjson` | `{ name, canonical, first_seen, last_seen, mentions_total, mentions_by_month: {"YYYY-MM": n}, projects: [], pages_sample: [] }` | aggregator |
+| `verdicts.ndjson` | `{ ts, target_kind: commitment \| question \| focus \| watch \| forecast, target_id, target_text, verdict: done \| drop \| carry \| wrong, note, source_ref }` | `notella-review` (append-only) |
+
+Every verdict row is also emitted as a `correction` event with `evidence.correction_type: "review-verdict"`. `target_id` is `hash(target_text)` for `watch | question | focus | forecast` and the ledger's `task_id` for `commitment`; `source_ref` points at the item (`monthly/{YYYY-MM}.json#next_month_watchlist[i]` for a forecast). A later verdict on the same `target_id` supersedes an earlier one.
+
+`logs/review-pending.md` is the human-readable queue of items awaiting a verdict, rendered by `notella-review`; it is regenerated, not appended.
 
 ## Activity log entry
 
@@ -513,7 +630,8 @@ Carries notella's existing `ProjectIntelligenceSchema`: timeline_summary, commit
 3. **Per-day directories.** Events are filed under `events/YYYY-MM-DD/` to keep directories from getting absurdly large.
 4. **Daily JSONL is regenerable.** If `events/2026-05-02.jsonl` is lost, `notella-state rebuild-events-index 2026-05-02` recreates it from the per-event JSONs.
 5. **Schema versions are explicit.** Every file declares its `schema_version`. Migrations are versioned.
-6. **Pages are the durable record.** Synthesis layers may be deleted and rebuilt from page records without loss.
+6. **Pages are the durable record.** Synthesis layers may be deleted and rebuilt from page records without loss — with one exception: `longitudinal/verdicts.ndjson` holds human judgements that exist nowhere else. Treat it like `pages/`.
+7. **Snapshots and ledgers are append-only.** A themes snapshot is written once; a ledger row is never edited. Supersede, don't rewrite.
 
 ## What this schema does NOT cover
 

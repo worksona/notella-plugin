@@ -41,7 +41,7 @@ Verify `phase == transcribed`. Verify required Layer-1 artifacts are present per
 
 ### Step 3 — Build the prompt
 
-Use notella-the-app's `FIRST_PASS_SYSTEM` and `buildFirstPassPrompt()` from `src/lib/prompts/first-pass.ts` verbatim. Extend the user prompt to include all Layer-1 artifacts, not just the transcript:
+Use the prompt in `references/first-pass-prompt.md` — the complete system prompt, doc-type emphasis table and user prompt shipped with this plugin. Its user turn carries every Layer-1 artifact, not just the transcript:
 
 ```
 ## Classification context
