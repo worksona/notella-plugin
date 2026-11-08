@@ -10,7 +10,13 @@ Step 3 of `notella-intake`: read a capture time from each inbox file so pages so
 command -v exiftool >/dev/null || echo "exiftool missing — falling back to mtime for every file"
 ```
 
-Missing exiftool is not fatal; it degrades every file to the mtime path below and the batch summary says so.
+Missing exiftool is not fatal. Without it (the case on the facility machine), use Spotlight's reading of the same EXIF capture date before falling back to mtime:
+
+```bash
+mdls -raw -name kMDItemContentCreationDate "$file"     # "2026-01-02 01:33:53 +0000", or "(null)"
+```
+
+and take the EXIF orientation from the file header (`notella_images.py` parses the JPEG APP1 segment itself; for HEIC/PNG `sips -g orientation "$file"`). The batch summary says which path was used.
 
 ## Images (JPG, JPEG, HEIC, HEIF, PNG)
 
@@ -44,7 +50,7 @@ iPhone HEIC carries EXIF in the same tags; exiftool reads them without conversio
 
 ### Orientation
 
-Record `Orientation` (1–8). `heif-convert` and `magick -auto-orient` bake rotation into the decoded JPG; `derived/page.jpg` must be upright because every vision call reads it. If the decoder did not auto-orient (check `exiftool -Orientation derived/page.jpg` → should be 1 or absent), run `magick derived/page.jpg -auto-orient derived/page.jpg`.
+Record `Orientation` (1–8). `sips -s format bmp` (the default decoder, see `heic-conversion.md`), `heif-convert` and `magick -auto-orient` bake rotation into the decoded image; `derived/page.jpg` must be upright because every vision call reads it. If the decoder did not auto-orient (check `exiftool -Orientation derived/page.jpg` → should be 1 or absent), run `magick derived/page.jpg -auto-orient derived/page.jpg`.
 
 ## PDFs
 

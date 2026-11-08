@@ -88,7 +88,7 @@ After backfill, `state.json:counters.pages_by_project` is rebuilt by `notella-st
 
 ## People discovery
 
-The same pass, with `metadata.people[]` unmatched against `manifest.people_aliases`, proposes **people aliases** when a normalised name appears on ≥ 3 pages across ≥ 2 weeks. Presented in the same prompt under "People seen repeatedly without an alias". On confirmation, written to `manifest.people_aliases[]` as `{name, aliases: [variants], discovered_at}`. This feeds the people ledger (step 9) and the weekly's `people_and_relationships`.
+The same pass, with `metadata.people[]` unmatched against `manifest.people_aliases`, proposes **people aliases** when a normalised name appears on ≥ 3 pages across ≥ 2 weeks. Presented in the same prompt under "People seen repeatedly without an alias". On confirmation, written to `manifest.people_aliases[]` as `{name, aliases: [variants], discovered_at}`. This feeds the people ledger (step 10) and the weekly's `people_and_relationships`.
 
 ## Idempotency
 

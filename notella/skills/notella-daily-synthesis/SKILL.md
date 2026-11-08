@@ -280,7 +280,7 @@ Each emits a `page.archived` event referencing this synthesis.
 - Does not run on weekly or project scopes — those are `notella-weekly-synthesis` and `notella-project-synthesis`.
 - Does not edit page artifacts.
 - Does not modify the manifest.
-- Does not write to `longitudinal/verdicts.ndjson` or the commitments ledger. It reads verdicts; `notella-review` records them; the ledger aggregator (orchestrator step 8) consumes `resolved_today` and verdicts to close commitments.
+- Does not write to `longitudinal/verdicts.ndjson` or the commitments ledger. It reads verdicts; `notella-review` records them; the ledger aggregator (orchestrator step 10) consumes `resolved_today` and verdicts to close commitments.
 - Does not rewrite earlier dailies when a later brief resolves or drops an item. History stays as written; the resolution is recorded on the day it happened.
 
 ## Examples

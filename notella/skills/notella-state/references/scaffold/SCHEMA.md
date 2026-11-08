@@ -12,7 +12,10 @@
 ├── README.md                    # tour of the facility
 ├── CONCURRENCY.md               # write protocol, locking, conflict resolution
 │
-├── inbox/                       # photos drop here; notella-intake drains it
+├── inbox/                       # photos drop here; notella-intake drains it (depth 1 only)
+│   └── _held/                   # duplicates held back from intake by notella-images `hold`
+│       ├── IMG_4419.HEIC        #   the held photo
+│       └── IMG_4419.HEIC.held.json   # why: decision, matched page, distance, sha256, dhash
 │
 ├── pages/                       # the durable record per page (a folder per page)
 │   └── {page-id}/
@@ -20,8 +23,9 @@
 │       ├── raw/                 # immutable original photo
 │       │   └── page.{ext}
 │       ├── derived/
-│       │   ├── page.jpg         # converted from HEIC at intake
+│       │   ├── page.jpg         # decoded at intake (EXIF applied); rebuilt from raw/ by notella-images fix
 │       │   └── thumb.jpg
+│       ├── quality.json         # image quality, perceptual hash, orientation verdict (notella-images)
 │       ├── classify.json        # Layer 1 — diagnosis
 │       ├── transcribe.json      # Layer 1 — text + marginalia + emphasis
 │       ├── composition.json     # Layer 1 — page-level spatial map
@@ -72,13 +76,19 @@
 │   ├── decisions.ndjson         # ledger — every daily new_decisions row (aggregator, rebuilt wholesale)
 │   ├── commitments.ndjson       # ledger — every action with a state annotation (aggregator, rebuilt wholesale)
 │   ├── people.ndjson            # ledger — one row per canonical person (aggregator, rebuilt wholesale)
-│   └── verdicts.ndjson          # ledger — human verdicts from notella-review (append-only)
+│   ├── verdicts.ndjson          # ledger — human verdicts from notella-review (append-only)
+│   ├── imports.ndjson           # ledger — every import decision: staged / skipped / held / released (append-only)
+│   ├── principles.json          # guiding principles with evidence pages (notella-principles, monthly)
+│   ├── principles.md            # rendered from principles.json
+│   └── principles-context.md    # ≤ 25 lines, paste-anywhere summary of the active principles
 │
 ├── logs/
 │   ├── activity.ndjson          # every state mutation
 │   ├── pipeline.ndjson          # page-stage runs (was the queue page)
 │   ├── llm-calls.ndjson         # full audit trail (was the history page)
-│   └── review-pending.md        # items awaiting a verdict, rendered by notella-review
+│   ├── review-pending.md        # items awaiting a verdict, rendered by notella-review
+│   ├── inventory-audit.json     # last source-folder audit vs the facility (notella-import `audit`)
+│   └── inbox-check.json         # last inbox duplicate + quality check (notella-import `inbox-check`)
 │
 └── locks/
     ├── state.json.lock
@@ -137,7 +147,44 @@ project_attributions: [project-atlas]
 person_attributions: [alice, bob]
 links_to: [2026-05-01-q4n9]               # other page-ids
 errors: []                                # any pipeline errors that didn't recover
+orientation_fix:                          # optional — set by notella-images fix; absent = derived is raw + EXIF
+  rotate: 180                             # clockwise degrees applied after EXIF: 0 | 90 | 180 | 270
+  flip: none                              # none | horizontal | vertical, applied after the rotation
+  applied_at: 2026-11-08T20:19:52Z
+  by: notella-images
+duplicate_of: 2025-12-01-4794             # optional — this page's raw image duplicates that page; syntheses skip it
 ```
+
+`orientation_fix` is the **absolute** transform from `raw/` (EXIF orientation applied first) to `derived/page.jpg`; it is replaced, never accumulated, and removed by `fix --reset`. `duplicate_of` names the original (never another duplicate) and comes with an `errors` note; the page keeps its phase.
+
+## Image quality — `pages/{page-id}/quality.json`
+
+Written by `notella-images` (`scripts/notella_images.py scan`, at intake, in orchestrator step 2, and after every `fix`). A measurement, not evidence: it is recomputed whenever `derived/page.jpg`, `classify.json`, `transcribe.json` or `meta.yaml` is newer. The desktop app reads it.
+
+```yaml
+schema_version: "0.1.0"
+computed_at: ISO-8601
+source: derived | raw                     # which file the pixel metrics describe
+width: int                                # as displayed (EXIF applied)
+height: int
+megapixels: float                         # 2 decimals
+exif_orientation: 1-8 | null              # of raw/
+brightness: float                         # mean luminance 0-255, 1 decimal (512 px decode)
+contrast: float                           # luminance std-dev, 1 decimal
+sharpness: float                          # variance of the 4-neighbour Laplacian, 1 decimal
+dark_fraction: float                      # share of pixels < 40, 3 decimals
+bright_fraction: float                    # share of pixels > 245, 3 decimals
+sha256_raw: hex | null
+dhash: 16 hex                             # 64-bit difference hash of raw/ (9x8 grayscale)
+grade: good | fair | poor                 # poor: >= 2 quality warnings; fair: 1
+warnings: [blurry | dark | overexposed | low-contrast | low-resolution | exif-rotated]   # exif-rotated is informational
+orientation:
+  status: ok | suspected | fixed | unknown
+  suggested: {rotate: 0|90|180|270, flip: none|horizontal|vertical} | null   # absolute transform for `fix`
+  sources: [orientation-fix | classify | stamp-position | classify-legacy | exif | low-transcript-confidence | review-cleared]
+```
+
+`notella-transcribe` refuses a page whose status is `suspected` with a non-null `suggested` (reason `orientation`) until it is fixed or cleared in review.
 
 ## Layer 1 artifacts
 
@@ -151,6 +198,12 @@ content_mix:
   diagram: 0-100
   table: 0-100
   symbolic: 0-100
+orientation:                              # optional; what to do to the image to make the page upright
+  rotate: 0 | 90 | 180 | 270              # clockwise
+  flip: none | horizontal | vertical      # after the rotation
+  confidence: 0.0-1.0
+  evidence: string
+                                          # legacy form still readable: orientation: "upright" | "rotated_180" | ...
 route_plan:                               # subset of route_plan_vocab from manifest
   - transcription
   - composition
@@ -428,9 +481,10 @@ high_confidence_count: int
 | `synthesis.weekly`      | Weekly synthesis written.                        |
 | `synthesis.monthly`     | Monthly synthesis (month in review) written.     |
 | `themes.refreshed`      | Longitudinal themes rebuilt; evidence carries `snapshot_path`, `previous_snapshot`, `delta_counts`. |
+| `principles.refreshed`  | `longitudinal/principles.json` rebuilt by `notella-principles`; evidence carries counts. |
 | `inbox.drained`         | Intake processed the inbox.                      |
 | `manifest.edited`       | Manifest updated.                                |
-| `correction`            | Correction to an earlier event/artifact. `evidence.correction_type` distinguishes `reprocess` (a synthesis overwritten), `review-verdict` (a human verdict from `notella-review`, mirrored in `longitudinal/verdicts.ndjson`), and others. |
+| `correction`            | Correction to an earlier event/artifact. `evidence.correction_type` distinguishes `reprocess` (a synthesis overwritten), `review-verdict` (a human verdict from `notella-review`, mirrored in `longitudinal/verdicts.ndjson`), `orientation-fix` (`derived/` rebuilt with `{rotate, flip, previous, reset}` by `notella-images fix`), `duplicate-raw-image` (`meta.yaml:duplicate_of` set by `notella-images mark-duplicate`; evidence `{duplicate_of, exact, distance, note}`), and others. |
 
 ---
 
@@ -590,18 +644,32 @@ momentum_summary: string
 
 ## Ledgers (`longitudinal/*.ndjson`)
 
-One JSON object per line, each line < 4 KB. `decisions`, `commitments` and `people` are rebuilt wholesale (tmp + rename) by the desktop aggregator after daily synthesis; `verdicts` is append-only, written by `notella-review` through `notella-state append-ledger`. All four are read by `notella-monthly-synthesis`.
+One JSON object per line, each line < 4 KB. `decisions`, `commitments` and `people` are rebuilt wholesale (tmp + rename) by the desktop aggregator after daily synthesis; `verdicts` is append-only, written by `notella-review` through `notella-state append-ledger`. All four are read by `notella-monthly-synthesis`. `imports` is append-only, written by `scripts/notella_images.py` (`stage`, `hold`, `release`).
 
 | File | Row shape | Writer |
 | ---- | --------- | ------ |
 | `decisions.ndjson` | `{ date, page_id, description, source }` | aggregator |
 | `commitments.ndjson` | `{ task_id, task, date, page_id, owner_candidates, priority, state: proposed \| owner_confirmed \| in_progress \| done \| abandoned, source }` — `task_id = hash(task)` (FNV-1a 32-bit over the normalised text, as defined in `notella-review`); older rows carry `description` in place of `task` and no `task_id` | aggregator |
 | `people.ndjson` | `{ name, canonical, first_seen, last_seen, mentions_total, mentions_by_month: {"YYYY-MM": n}, projects: [], pages_sample: [] }` | aggregator |
-| `verdicts.ndjson` | `{ ts, target_kind: commitment \| question \| focus \| watch \| forecast, target_id, target_text, verdict: done \| drop \| carry \| wrong, note, source_ref }` | `notella-review` (append-only) |
+| `verdicts.ndjson` | `{ ts, target_kind: commitment \| question \| focus \| watch \| forecast \| image \| held_import \| principle, target_id, target_text, verdict: done \| drop \| carry \| wrong \| pin, note, source_ref }` (`pin` only for principles) | `notella-review` (append-only) |
+| `imports.ndjson` | `{ ts, source_path, sha256, dhash, decision: staged \| skipped_exact \| skipped_near \| skipped_quality \| skipped_within_source \| skipped_missing \| skipped_changed \| held_exact \| held_near \| released, matched_page, distance, quality_grade, inbox_name, held_name? }` | `notella_images.py` (append-only) |
 
 Every verdict row is also emitted as a `correction` event with `evidence.correction_type: "review-verdict"`. `target_id` is `hash(target_text)` for `watch | question | focus | forecast` and the ledger's `task_id` for `commitment`; `source_ref` points at the item (`monthly/{YYYY-MM}.json#next_month_watchlist[i]` for a forecast). A later verdict on the same `target_id` supersedes an earlier one.
 
+`target_id` for the newer kinds: `image` → the page id; `held_import` → the first 16 hex of the held file's sha256; `principle` → the principle id.
+
 `logs/review-pending.md` is the human-readable queue of items awaiting a verdict, rendered by `notella-review`; it is regenerated, not appended.
+
+## Principles (`longitudinal/principles.json`, `principles.md`, `principles-context.md`)
+
+Written by `notella-principles` (monthly, after themes; orchestrator step 7): the principles David states and re-states, each with `id`, `statement`, `paraphrases`, `domain`, `first_seen`, `last_asserted`, `times_asserted`, `evidence_pages`, `evidence_quotes`, `status: active | dormant | contested | retired`, `confirmed`, `pinned`, `tensions`, `implied_actions`. The full shape lives in that skill. All three files are rewritten together (tmp + rename) on each refresh, which emits `principles.refreshed`.
+
+## Import and inbox reports (`logs/inventory-audit.json`, `logs/inbox-check.json`)
+
+Views, overwritten on each run (tmp + rename), written by `scripts/notella_images.py`:
+
+- `inventory-audit.json` — `{schema_version, generated_at, sources[], summary{counts}, files[{path, size_bytes, sha256, dhash, status: in_facility_exact | near_duplicate | duplicate_within_source | new | skipped | error, page_id, distance, quality_grade, ...}], facility_duplicates{exact[[a,b]], near[{a,b,distance,marked}]}}`
+- `inbox-check.json` — `{generated_at, files[{name, sha256, dhash, status: new | in_facility_exact | near_duplicate | duplicate_within_inbox, page_id, distance, quality{grade, warnings, ...}, exif_orientation}]}`
 
 ## Activity log entry
 
@@ -625,8 +693,8 @@ Every verdict row is also emitted as a `correction` event with `evidence.correct
 
 ## Ground rules
 
-1. **Evidence is immutable.** Once a page artifact or event file is written, it is never edited. Corrections go in via a new event with `kind: "correction"` referencing the original.
-2. **All writes flow through `notella-state`.** No skill mutates `~/notella/` directly except `notella-state` itself.
+1. **Evidence is immutable.** Once a page artifact or event file is written, it is never edited. Corrections go in via a new event with `kind: "correction"` referencing the original. `raw/` is never modified by anything. Two page files are regenerable views rather than evidence: `derived/` (rebuilt from `raw/` by `notella-images fix`, which records an `orientation-fix` correction) and `quality.json` (recomputed by every scan).
+2. **All writes flow through `notella-state`.** No skill mutates `~/notella/` directly except `notella-state` itself — and the two bundled tools that follow the same discipline (per-page lock, tmp + rename, single-line appends): `scripts/notella_images.py` (quality.json, derived/, `orientation_fix` / `duplicate_of` in meta.yaml, inbox/_held/, imports.ndjson, the two import reports, its correction events) and the desktop ledger aggregator.
 3. **Per-day directories.** Events are filed under `events/YYYY-MM-DD/` to keep directories from getting absurdly large.
 4. **Daily JSONL is regenerable.** If `events/2026-05-02.jsonl` is lost, `notella-state rebuild-events-index 2026-05-02` recreates it from the per-event JSONs.
 5. **Schema versions are explicit.** Every file declares its `schema_version`. Migrations are versioned.

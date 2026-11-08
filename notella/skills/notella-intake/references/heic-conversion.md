@@ -2,7 +2,19 @@
 
 How `notella-intake` produces `derived/page.jpg` and `derived/thumb.jpg` from the immutable `raw/page.{ext}`. The JPG is the canonical decode every vision call reads; its quality and orientation matter more than file size.
 
-## Tools, in preference order
+## Default on macOS: sips
+
+`sips` is always present on macOS and is the default decoder (the facility machine has no libheif, ImageMagick or exiftool). It reads HEIC/HEIF, JPEG and PNG and applies the EXIF orientation while decoding; converting through BMP leaves no orientation tag in the result:
+
+```bash
+sips -s format bmp raw/page.heic --out "$tmp/full.bmp"
+sips -s format jpeg -s formatOptions 92 "$tmp/full.bmp" --out derived/page.jpg
+sips -s format jpeg -s formatOptions 85 -Z 800 derived/page.jpg --out derived/thumb.jpg
+```
+
+This is exactly what `notella_images.py fix` does (plus a rotation/flip), so a page's `derived/` can always be rebuilt the same way. The `magick` recipes below apply when ImageMagick is installed; the verification and size-cap rules apply either way (`sips -g pixelWidth -g pixelHeight` for dimensions, `notella_images.py scan --pages ID` for a non-uniform, plausible decode — a blank decode scores contrast ≈ 0).
+
+## Other tools, in preference order
 
 | Tool | Install | Notes |
 | --- | --- | --- |
