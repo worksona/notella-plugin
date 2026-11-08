@@ -1,6 +1,6 @@
 ---
 name: notella-intake
-description: "Drain `~/notella/inbox/` into the page lifecycle. Mints page-ids, runs HEIC→JPG conversion, generates thumbnails, groups photos into entries by EXIF capture-time window, writes initial `meta.yaml` at phase=intake, emits `page.intake` events. Use whenever the user says 'drain the inbox', 'process my new photos', 'intake notella', 'I dropped photos in the inbox', 'ingest these notes', 'start the pipeline', or any request to bring inbox photos into the facility. Also trigger when notella-orchestrator's decision walk reaches step 1 (inbox drain). Routes all writes through `notella-state`. Idempotent — re-running with the same files produces zero new pages."
+description: "Drain `~/notella/inbox/` into the page lifecycle. Holds back photos the facility already has (exact or near-duplicate, checked against every page, not just same-date ids), mints page-ids, decodes to an upright JPG with EXIF auto-orientation via sips, generates thumbnails, measures image quality and orientation (`quality.json`), groups photos into entries by EXIF capture-time window, writes initial `meta.yaml` at phase=intake, emits `page.intake` events. Use whenever the user says 'drain the inbox', 'process my new photos', 'intake notella', 'I dropped photos in the inbox', 'ingest these notes', 'start the pipeline', or any request to bring inbox photos into the facility. Also trigger when notella-orchestrator's decision walk reaches step 1 (inbox drain). Routes all writes through `notella-state`. Idempotent — re-running with the same files produces zero new pages."
 ---
 
 # notella-intake — the inbox drainer
@@ -19,12 +19,17 @@ Take whatever sits in `inbox/` and turn it into properly-shaped page records at 
 **Outputs (per accepted file):**
 - `pages/{page-id}/meta.yaml` at `phase=intake`
 - `pages/{page-id}/raw/page.{ext}` (immutable copy of the original)
-- `pages/{page-id}/derived/page.jpg` (decoded JPG; HEIC sources are converted)
+- `pages/{page-id}/derived/page.jpg` (decoded JPG, EXIF orientation applied; HEIC sources are converted)
 - `pages/{page-id}/derived/thumb.jpg` (long-edge ≤ `manifest.intake.thumbnail_max_dim_px`)
+- `pages/{page-id}/quality.json` (image quality, perceptual hash, orientation verdict — see `notella-images`)
 - One `events/YYYY-MM-DD/{event-id}.json` per page with `kind: page.intake`
 - Optional `entries/{entry-id}/meta.yaml` if the entry-grouping rule binds multiple new pages together
 - Inbox file removed after successful page record creation
 - One `inbox.drained` event summarizing the batch
+
+**Outputs (per held file):** the file moved to `inbox/_held/` with a `{name}.held.json` note, a `held_exact` / `held_near` row in `longitudinal/imports.ndjson`, and no page.
+
+**Tool:** the duplicate check, decode checks and quality scan use `python3 "$CLAUDE_PLUGIN_ROOT/scripts/notella_images.py"` with `NL_DIR` set to the facility (stdlib Python + macOS `sips`; see `notella-images` and `notella-import`).
 
 ## How a drain runs
 
@@ -36,6 +41,22 @@ Via `notella-state get-manifest`:
 - `manifest.intake.thumbnail_max_dim_px`
 - `manifest.intake.preserve_originals`
 - `manifest.intake.entry_grouping_window_minutes`
+
+### Step 1b — Hold duplicates before anything is minted
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/scripts/notella_images.py" hold
+```
+
+This runs the inbox check (`logs/inbox-check.json`) and compares every inbox image with **every** page in the facility — sha256 against each page's `raw/`, and the 64-bit dhash (including rotated and mirrored variants) within distance 6:
+
+- **exact** (byte-identical to a page's raw) → moved to `inbox/_held/` with a note naming the page; no new page.
+- **near** (same page re-encoded, resized, rotated, mirrored) → moved to `inbox/_held/` for review; `notella-review` shows it under "Held imports" and a `wrong` verdict releases it back to the inbox.
+- files released earlier (`decision: released` in `longitudinal/imports.ndjson`) are left in the inbox and minted.
+
+Why this cannot rely on the page id: the id seed is `date | sha256`, and the date comes from the on-page stamp, EXIF or mtime. The 15 duplicate pages of the 2026-01-02 batch were byte-identical to December pages but were dated by their upload, so they minted new ids. The content check does not depend on the date.
+
+If the script is unavailable (no `sips`), say so in the batch summary and continue without the check — the id rule still catches same-date duplicates.
 
 ### Step 2 — Enumerate inbox files
 
@@ -49,7 +70,7 @@ Sort by EXIF capture-time when present, otherwise by mtime, then by filename. St
 
 ### Step 3 — Read EXIF capture-time per file
 
-For images: `exiftool -DateTimeOriginal -CreateDate -j {file}` (preferred) or fall back to mtime.
+For images: `exiftool -DateTimeOriginal -CreateDate -j {file}` when exiftool is installed; otherwise `mdls -raw -name kMDItemContentCreationDate {file}` (Spotlight reads the EXIF capture date); otherwise mtime. Details: `references/exif-extraction.md`.
 For PDFs: best-effort via `exiftool -CreateDate`; otherwise mtime.
 
 Record `source_capture_time` per file; null if no EXIF and PDF metadata both fail.
@@ -128,22 +149,21 @@ pages/{page-id}/
 └── derived/thumb.jpg
 ```
 
-### HEIC handling
+### Decode (HEIC, JPG, PNG) — upright, via sips
 
-If the source is HEIC/HEIF and `manifest.intake.heic_convert` is true:
+`sips` (built into macOS) decodes JPEG, HEIC/HEIF and PNG and **applies the EXIF orientation while decoding**; going through BMP leaves no orientation tag behind, so the JPG is upright for every consumer:
 
 ```bash
-heif-convert -q 92 raw/page.heic derived/page.jpg
+sips -s format bmp raw/page.{ext} --out "$tmp/full.bmp"                       # EXIF orientation applied
+sips -s format jpeg -s formatOptions 92 "$tmp/full.bmp" --out derived/page.jpg  # canonical decode, q92
 ```
 
-Falls back to `magick raw/page.heic derived/page.jpg` if `heif-convert` is unavailable. JPG is the canonical decode used by every downstream vision call.
-
-For non-HEIC sources, `derived/page.jpg` is produced by re-encoding to JPG at quality 92 (PNG sources lose nothing the vision API cares about; JPG sources get a normalized re-encode).
+`heif-convert` / `magick -auto-orient` are equivalent when installed; sips is the default because it is always present. JPG is the canonical decode used by every downstream vision call. Never copy a JPEG with an EXIF orientation tag straight to `derived/` — the vision models see the stored pixels, sideways. (A byte-for-byte copy is fine when the raw has no orientation tag or orientation 1, as with the scanned pages.)
 
 ### Thumbnail generation
 
 ```bash
-magick derived/page.jpg -resize ${thumb_max}x${thumb_max} derived/thumb.jpg
+sips -s format jpeg -s formatOptions 85 -Z ${thumb_max} derived/page.jpg --out derived/thumb.jpg
 ```
 
 Where `thumb_max = manifest.intake.thumbnail_max_dim_px` (default 800).
@@ -233,6 +253,21 @@ Failure handling: if any write fails before this, leave the inbox file in place.
 notella-state release-page-lock {page-id, actor: notella-intake}
 ```
 
+### Step 12b — Measure quality and orientation
+
+After the page lock is released (the scan takes the page lock itself and skips a locked page), run:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/scripts/notella_images.py" scan --pages {page-id}
+```
+
+This writes `pages/{page-id}/quality.json`: grade (`good | fair | poor`), warnings (`blurry, dark, overexposed, low-contrast, low-resolution, exif-rotated`), `sha256_raw`, `dhash`, and an orientation verdict (the red series stamp found in the wrong corner, for example, means the page is upside down or sideways). Then:
+
+- **grade `poor`**: the page is still minted, and a note is appended to `meta.yaml:errors` via `notella-state update-page-meta`: `"low image quality (poor: blurry, dark) — consider re-photographing"`. `notella-review` surfaces it under "Image attention".
+- **orientation `suspected`**: nothing to do here — `notella-classify` looks at the page next and fixes it when it agrees; `notella-transcribe` refuses to run while a concrete suggestion is open.
+
+A scan failure is not fatal: log it, leave `quality.json` absent (the orchestrator's step 2 scans pages that lack one).
+
 ### Step 13 — Finalize the batch
 
 After all files in this run are processed:
@@ -253,14 +288,17 @@ kind: inbox.drained
 evidence:
   files_seen: 7
   pages_created: 5
-  pages_skipped_duplicate: 2
+  pages_skipped_duplicate: 2            # same id already existed
+  files_held_exact: 0                   # moved to inbox/_held/ by Step 1b
+  files_held_near: 0
+  pages_poor_quality: 0
   entries_created: 2
   errors: []
 ```
 
 ## `--redecode {page-id}`
 
-Rebuilds `derived/page.jpg` and `derived/thumb.jpg` from the immutable `raw/page.*` (same HEIC and thumbnail rules as above) without touching the page id, phase, `meta.yaml` or any artifact. Used by the orchestrator's stuck-page rules when transcription confidence stays low because of a bad decode (rotation, blur from a poor first conversion). Logs one `pipeline.ndjson` line with `action: redecode`; emits no event.
+Rebuilds `derived/page.jpg` and `derived/thumb.jpg` from the immutable `raw/page.*` (same decode and thumbnail rules as above, and the page's `meta.yaml:orientation_fix` transform when it has one) without touching the page id, phase, `meta.yaml` or any artifact; then re-runs the quality scan for the page. Used by the orchestrator's stuck-page rules when transcription confidence stays low because of a bad decode (rotation, blur from a poor first conversion). Logs one `pipeline.ndjson` line with `action: redecode`; emits no event.
 
 ## Idempotency
 
@@ -269,12 +307,15 @@ Every operation is idempotent:
 - Re-running on the same files: deterministic page-ids collide with existing folders → no-op.
 - Re-running with a partial failure: any file that didn't get fully processed still exists in `inbox/`; this run picks it up.
 - Re-running entry grouping: the `ent_*` id is deterministic over the seed pages, so the same group always produces the same entry-id.
+- Re-running the hold step: held files are no longer in the inbox; released files are never re-held.
 
 ## Failure modes
 
 | Failure                                      | Behavior                                                 |
 | -------------------------------------------- | -------------------------------------------------------- |
-| `heif-convert` and `magick` both unavailable | Skip HEIC files; surface in batch summary; user installs the dependency. |
+| `sips` unavailable (not macOS) and no `heif-convert` / `magick` | Skip HEIC files; surface in batch summary; user installs the dependency. The duplicate hold and quality scan are skipped too (they need sips). |
+| Inbox file duplicates an existing page | Held in `inbox/_held/` (Step 1b), not minted; listed in the batch summary with the matching page id. |
+| Poor image quality | Minted, flagged in `meta.yaml:errors`, surfaced by `notella-review`; suggest re-photographing. |
 | EXIF unreadable                              | Use mtime; record `source_capture_time: null`; the page becomes its own entry. |
 | Page folder write fails midway               | Inbox file remains; partial folder is left for the validator to flag. Manual cleanup may be needed. |
 | Page lock held by another actor              | Skip and continue; surface in batch summary.             |
@@ -286,6 +327,8 @@ Every operation is idempotent:
 - **Does not delete originals from `raw/`.** They are immutable.
 - **Does not advance phase past `intake`.** That's the next skill's job.
 - **Does not infer projects or people from the photo.** Attributions stay empty until metadata/first-pass run.
+- **Does not rotate or flip pages.** It applies the camera's EXIF orientation only; content-level orientation (a page photographed upside down) is `notella-classify` + `notella-images fix`.
+- **Does not delete held files.** Discarding a held duplicate is the person's call.
 
 ## Examples
 
@@ -294,10 +337,12 @@ Every operation is idempotent:
 Reads `~/notella/inbox/`, processes every supported file, returns a summary:
 
 ```
-Processed 5 files (4 HEIC, 1 JPG):
+Processed 6 files (5 HEIC, 1 JPG):
+- Held 1 duplicate: IMG_4419.HEIC = 2026-04-09-y534 (identical bytes) → inbox/_held/
 - Created 5 new pages: 2026-05-02-{x7k2, w9m3, r6t8, p4q1, n2v5}
 - Created 2 entries: ent_2026-05-02-aab1 (3 pages), ent_2026-05-02-bcd2 (2 pages)
-- Skipped 0 duplicates
+- Quality: 4 good, 1 poor (2026-05-02-n2v5: blurry, dark — consider re-photographing)
+- Orientation: 1 suspected (2026-05-02-p4q1: red stamp top-left → rotate 180; classify will confirm)
 - Errors: 0
 
 All pages now at phase=intake. Run notella-orchestrator to advance.
@@ -318,6 +363,7 @@ No changes.
 
 - `references/exif-extraction.md` — the exact `exiftool` invocation per file type and the fallback behavior.
 - `references/heic-conversion.md` — quality settings, color-profile preservation, fallbacks.
+- `../notella-images/SKILL.md` — `quality.json`, orientation signals, `fix`; `../notella-import/SKILL.md` — inbox check, hold/release, the imports ledger.
 - `references/page-id-derivation.md` — the deterministic seed and base32 alphabet.
 
 If reference files are missing, the SKILL.md instructions above are self-sufficient.

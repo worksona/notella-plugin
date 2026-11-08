@@ -1,6 +1,6 @@
 ---
 name: notella-state
-description: "The shared memory of the notella facility — handwritten note intelligence over time. Read, write, or validate `~/notella/` — manifest, page lifecycle, state.json, events, daily/weekly/monthly/project synthesis, longitudinal intelligence (themes snapshots, ledgers), activity log. Trigger on 'log this page', 'advance the phase of page X', 'tail the activity log', 'check notella-state health', 'validate notella', 'list pages', 'count pages by phase', 'get the manifest', 'rebuild the page index', 'init the notella facility', 'append to the verdicts ledger', 'get the previous themes snapshot', or any request that reads or writes `~/notella/`. Also trigger automatically whenever another notella-* skill (orchestrator, intake, classify, transcribe, first-pass, actions, diagram, sketch, table, composition, metadata, daily-synthesis, project-synthesis, weekly-synthesis, monthly-synthesis, themes, review, kanban) needs to read or write state — they route through this one. Init a new facility if `~/notella/manifest.yaml` doesn't exist."
+description: "The shared memory of the notella facility — handwritten note intelligence over time. Read, write, or validate `~/notella/` — manifest, page lifecycle, state.json, events, daily/weekly/monthly/project synthesis, longitudinal intelligence (themes snapshots, principles, ledgers), image records, activity log. Trigger on 'log this page', 'advance the phase of page X', 'tail the activity log', 'check notella-state health', 'validate notella', 'list pages', 'count pages by phase', 'get the manifest', 'rebuild the page index', 'init the notella facility', 'append to the verdicts ledger', 'get the previous themes snapshot', or any request that reads or writes `~/notella/`. Also trigger automatically whenever another notella-* skill (pipeline, synthesis, themes, principles, review, images, import, kanban) needs to read or write state — they route through this one. Init a new facility if `~/notella/manifest.yaml` doesn't exist."
 ---
 
 # notella-state — the memory layer
@@ -32,12 +32,12 @@ The canonical schema lives in `~/notella/SCHEMA.md`. This skill validates agains
 
 A page folder always contains:
 
-- `meta.yaml` — id, entry_id, phase, phase_history, source_filename, ingested_at, content_mix, confidence, tags, project_attributions, person_attributions, links_to[], errors[]
+- `meta.yaml` — id, entry_id, phase, phase_history, source_filename, ingested_at, content_mix, confidence, tags, project_attributions, person_attributions, links_to[], errors[]; optionally `orientation_fix: {rotate, flip, applied_at, by}` (the absolute transform `notella-images fix` applied to raw) and `duplicate_of: {page-id}` (this page's raw duplicates that page; syntheses skip it)
 - `raw/page.{ext}` — immutable original photo
-- `derived/page.jpg` — converted JPG (HEIC→JPG happens at intake)
+- `derived/page.jpg` — converted JPG (decoded at intake with EXIF orientation applied; rebuilt from raw by `notella-images fix`)
 - `derived/thumb.jpg` — thumbnail
 
-Plus zero or more Layer-1 artifacts (`classify.json`, `transcribe.json`, `composition.json`, `diagram.json`, `sketch.json`, `table.json`) and zero or more Layer-2 artifacts (`metadata.json`, `first-pass.json`, `actions.json`).
+Plus `quality.json` (image metrics, `sha256_raw`, `dhash`, grade, warnings, orientation verdict — written by `scripts/notella_images.py scan`; a recomputable measurement, see SCHEMA.md "Image quality"), zero or more Layer-1 artifacts (`classify.json`, `transcribe.json`, `composition.json`, `diagram.json`, `sketch.json`, `table.json`) and zero or more Layer-2 artifacts (`metadata.json`, `first-pass.json`, `actions.json`).
 
 The `phase` field in `meta.yaml` is the durable state. Allowed values, in order:
 
@@ -95,9 +95,10 @@ Refuse to write any event missing required fields.
 | `synthesis.weekly`     | A weekly synthesis was written.                 |
 | `synthesis.monthly`    | A monthly synthesis (month in review) was written. |
 | `themes.refreshed`     | Longitudinal themes were rebuilt (a new snapshot under `longitudinal/themes/`). |
+| `principles.refreshed` | `longitudinal/principles.json` (+ `.md`, `principles-context.md`) was rebuilt by `notella-principles`. |
 | `inbox.drained`        | The intake skill processed the inbox.           |
 | `manifest.edited`      | The manifest was updated.                       |
-| `correction`           | A correction to an earlier event/artifact. `evidence.correction_type` says which kind: `reprocess` (a synthesis overwritten with `--reprocess`), `review-verdict` (a human verdict recorded by `notella-review`; the same row is appended to `longitudinal/verdicts.ndjson`), or others defined by the emitting skill. |
+| `correction`           | A correction to an earlier event/artifact. `evidence.correction_type` says which kind: `reprocess` (a synthesis overwritten with `--reprocess`), `review-verdict` (a human verdict recorded by `notella-review`; the same row is appended to `longitudinal/verdicts.ndjson`), `orientation-fix` (`derived/` rebuilt with `{rotate, flip, previous, reset}` by `notella-images`; id `correction-{date}-{sha256(page\|rotate\|flip\|date)[:6]}`), `duplicate-raw-image` (`meta.yaml:duplicate_of` set by `notella-images mark-duplicate`), or others defined by the emitting skill. |
 
 ## Operations
 
@@ -113,6 +114,7 @@ Create `~/notella/` with the directory tree from SCHEMA.md, plus seed files:
 ├── README.md          ← copy
 ├── CONCURRENCY.md     ← copy
 ├── inbox/
+│   └── _held/         ← duplicates held back from intake (notella-import / notella-images `hold`)
 ├── pages/
 ├── entries/
 ├── events/
@@ -136,7 +138,7 @@ The skill carries reference copies of `manifest.yaml`, `state.json`, `SCHEMA.md`
 
 **get-page** `page-id` → return parsed `meta.yaml` plus a manifest of which artifacts exist (`{classify: true, transcribe: true, ...}`).
 
-**get-page-artifact** `page-id` `artifact` → return parsed JSON for one of `classify | transcribe | composition | diagram | sketch | table | metadata | first-pass | actions`. Returns `null` if absent.
+**get-page-artifact** `page-id` `artifact` → return parsed JSON for one of `classify | transcribe | composition | diagram | sketch | table | metadata | first-pass | actions | quality`. Returns `null` if absent. For `classify`, an `orientation` given as a legacy string (`"upright"`, `"rotated_180"`) is returned as written; callers map it (`"upright"` = `{rotate: 0, flip: none}`).
 
 **list-pages** with optional filters: `phase`, `since`, `until`, `entry_id`, `project_slug`, `tag`, `limit`. Walks `pages/` and reads each `meta.yaml`; filters in memory; returns array.
 
@@ -164,7 +166,7 @@ The skill carries reference copies of `manifest.yaml`, `state.json`, `SCHEMA.md`
 
 **list-monthlies** → all `YYYY-MM` months with monthly synthesis written, ascending.
 
-**get-longitudinal** `kind` → parsed `longitudinal/{kind}.json` (themes | trajectory | patterns). For `themes` this is the latest copy; use `get-themes-snapshot` to reach history.
+**get-longitudinal** `kind` → parsed `longitudinal/{kind}.json` (themes | trajectory | patterns | principles). For `themes` this is the latest copy; use `get-themes-snapshot` to reach history.
 
 **get-themes-snapshot** `date | latest | previous` → parsed snapshot from `longitudinal/themes/`, plus its `path`:
 
@@ -176,7 +178,7 @@ The skill carries reference copies of `manifest.yaml`, `state.json`, `SCHEMA.md`
 
 Migration: if `longitudinal/themes/` is empty or absent but a legacy `longitudinal/themes.json` exists, copy it to `longitudinal/themes/{its generated_at date}.json` first (atomic), then answer. `latest` then returns that file and `previous` returns `null`. Snapshots are never modified or deleted by any operation.
 
-**read-ledger** `{file, since?, until?, kind?, limit?}` → parsed rows of `longitudinal/{file}.ndjson` where `file ∈ decisions | commitments | people | verdicts`. Rows are returned in file order; `since`/`until` filter on the row's `date` (decisions, commitments) or `ts` (verdicts); `kind` filters verdicts on `target_kind`; `people` ignores them. Returns `{status: "absent", rows: []}` rather than an error when the file does not exist, so callers can skip a section cleanly. Unparseable lines are skipped and counted in `skipped_lines`. `get-longitudinal {commitments | decisions | people | verdicts}` is accepted as a synonym and returns the rows.
+**read-ledger** `{file, since?, until?, kind?, limit?}` → parsed rows of `longitudinal/{file}.ndjson` where `file ∈ decisions | commitments | people | verdicts | imports`. Rows are returned in file order; `since`/`until` filter on the row's `date` (decisions, commitments) or `ts` (verdicts, imports); `kind` filters verdicts on `target_kind` and imports on `decision`; `people` ignores them. Returns `{status: "absent", rows: []}` rather than an error when the file does not exist, so callers can skip a section cleanly. Unparseable lines are skipped and counted in `skipped_lines`. `get-longitudinal {commitments | decisions | people | verdicts}` is accepted as a synonym and returns the rows.
 
 **list-verdicts** `{since?, until?, kind?}` → `read-ledger {file: verdicts, ...}`. The name the synthesis skills and `notella-review` use. Consumers take the latest row per `target_id`.
 
@@ -197,6 +199,9 @@ Migration: if `longitudinal/themes/` is empty or absent but a legacy `longitudin
 - No stale lockfiles older than 1 hour
 - No orphaned page folders (every page has at least `meta.yaml` and `raw/`)
 - Every `project_attribution` references a project in manifest, or is empty
+- Every `duplicate_of` names an existing page that is not itself a duplicate; every `orientation_fix` has `rotate ∈ {0,90,180,270}` and `flip ∈ {none, horizontal, vertical}`
+- `quality.json`, where present, carries the contract fields (SCHEMA.md "Image quality"); two pages with the same `sha256_raw` where neither is `duplicate_of` the other are reported (`duplicate-raw-unmarked`)
+- Every file in `inbox/_held/` has a `.held.json` note
 
 ### Write operations
 
@@ -286,7 +291,9 @@ Update `state.json:last_synthesis_at.{daily,weekly,monthly,by_project[slug]}` un
 
 For `kind: trajectory | patterns` the behaviour is unchanged: write `longitudinal/{kind}.json`, update `last_longitudinal_at`, emit `themes.refreshed`. Earlier snapshots under `longitudinal/themes/` are never touched.
 
-**append-ledger** `{file, row}` — append one JSON row to `longitudinal/{file}.ndjson`, `file ∈ decisions | commitments | people | verdicts`.
+For `kind: principles` (caller `notella-principles`): `{json, md, context_md}` are all required; write `longitudinal/principles.json`, `principles.md` and `principles-context.md` (each tmp + rename, json last so a reader never sees a json newer than its md), append `principles.refreshed` to `activity.ndjson`, and emit the `principles.refreshed` event the caller passes. There are no dated snapshots; the event log keeps the history.
+
+**append-ledger** `{file, row}` — append one JSON row to `longitudinal/{file}.ndjson`, `file ∈ decisions | commitments | people | verdicts | imports`.
 
 ```
 1. Validate row is a JSON object and serialises to a single line < 4 KB. Refuse otherwise.
@@ -300,7 +307,7 @@ Append-only: there is no edit or delete operation for ledger rows. A row that su
 
 **update-manifest** `{add_projects?: [{slug, name, description, keywords}], add_people_aliases?: [{canonical, aliases}], set?: {facility.owner|facility.timezone: value}}` — the only sanctioned manifest write. Takes `locks/manifest.yaml.lock`, validates slug format `^[a-z0-9][a-z0-9-]{1,40}$` and uniqueness, never removes or renames existing entries, writes tmp + rename, appends `manifest.edited` to `activity.ndjson` with the fields changed and a `manifest.yaml.bak-{date}` backup path. Callers (orchestrator project discovery, notella-review) must hold an explicit user confirmation before calling it.
 
-**write-log** `{path, content}` — overwrite a rendered view under `logs/` (today only `logs/review-pending.md`) with tmp + rename. `path` must be inside `logs/` and must not be one of the append-only `.ndjson` files; refuse otherwise. Views are not evidence and are not logged to `activity.ndjson`.
+**write-log** `{path, content}` — overwrite a rendered view under `logs/` (`logs/review-pending.md`; the image tool writes `logs/inventory-audit.json` and `logs/inbox-check.json` itself with the same tmp + rename) with tmp + rename. `path` must be inside `logs/` and must not be one of the append-only `.ndjson` files; refuse otherwise. Views are not evidence and are not logged to `activity.ndjson`.
 
 **rebuild-events-index** `date` — read every JSON file in `events/YYYY-MM-DD/`, regenerate `events/YYYY-MM-DD.jsonl`. Use when the index is missing or corrupted.
 
@@ -336,7 +343,8 @@ Append-only: there is no edit or delete operation for ledger rows. A row that su
 - **Per-event writes are lock-free** — deterministic ids + atomic file creation = idempotent, safe, parallel.
 - **state.json and manifest.yaml writes use advisory lockfiles** — `locks/state.json.lock`, `locks/manifest.yaml.lock`, 5-minute TTL.
 - **Per-page writes use a per-page lock** — `locks/pages/{page-id}.lock`, 5-minute TTL. Held for one stage's duration.
-- **Append-only logs and ledgers use O_APPEND** — `logs/*.ndjson`, `events/*.jsonl`, and `longitudinal/{decisions,commitments,people,verdicts}.ndjson`; single-line writes < 4 KB are atomic per POSIX.
+- **Append-only logs and ledgers use O_APPEND** — `logs/*.ndjson`, `events/*.jsonl`, and `longitudinal/{decisions,commitments,people,verdicts,imports}.ndjson`; single-line writes < 4 KB are atomic per POSIX.
+- **The bundled image tool follows the same rules** — `scripts/notella_images.py` takes the per-page lock for `quality.json`, `derived/` and `meta.yaml` edits, writes tmp + rename, appends single lines, and never touches `raw/`. It is the one writer besides this skill (and the desktop ledger aggregator) allowed to write facility files directly, because its work is pixel processing, not state logic.
 - **Atomic renames for singletons** — `tmp + rename`, never overwrite in place. This includes `longitudinal/themes.json` (copied from the dated snapshot) and the aggregator's wholesale ledger rebuilds.
 - **Snapshots are immutable** — files under `longitudinal/themes/` are written once per refresh day and never edited or removed.
 - **Idempotency is mandatory** — every operation must be safe to retry.
@@ -349,6 +357,7 @@ Append-only: there is no edit or delete operation for ledger rows. A row that su
 - **Does not judge.** Review verdicts are decided by the user in `notella-review`; this skill only appends the row and the `correction` event.
 - **Does not classify, attribute, or rename projects.** Accepts whatever the caller passes; reattribution comes via correction events.
 - **Does not delete pages or events.** Evidence is immutable. Period.
+- **Does not measure or repair images.** Quality, orientation, duplicates and imports are `notella-images` / `notella-import` (`scripts/notella_images.py`).
 - **Does not advance a page's phase autonomously.** The caller (a pipeline skill or the orchestrator) requests the advance after writing the required artifact.
 
 ## Examples
@@ -405,7 +414,7 @@ Walks every invariant from CONCURRENCY.md → "Invariants the validator enforces
 
 - `references/scaffold/manifest.yaml` — template manifest copied into place on `init`
 - `references/scaffold/state.json` — initial empty state.json
-- `references/scaffold/SCHEMA.md` — canonical schema, copied into the facility
+- `references/scaffold/SCHEMA.md` — canonical schema, copied into the facility (includes `quality.json`, `orientation_fix`, `duplicate_of`, `inbox/_held/`, the imports ledger, the import reports and the principles files)
 - `references/scaffold/README.md` — facility README, copied into place
 - `references/scaffold/CONCURRENCY.md` — concurrency doc, copied into place
 

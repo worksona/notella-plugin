@@ -22,9 +22,12 @@ The full list of checks `notella-orchestrator` runs before and during a batch. T
 | I-7 | Every `daily/{date}.json` has `pages_analyzed == count(pages with authoritative date == date and phase ≥ indexed)`. | all dailies | Flag `daily-stale`; queue `daily-synthesis --reprocess` for that date (pages were added after the brief). |
 | I-8 | Every page at `phase == archived` is listed in exactly one `daily/*.json`. | archived pages | Flag `archived-not-in-daily`; queue daily synthesis for that page's date. |
 | I-9 | `weekly/{week}.json:dates_covered` ⊆ existing dailies. | all weeklies | Flag `weekly-stale` when a daily inside the week is newer than the weekly; queue `weekly --reprocess`. |
-| I-10 | `monthly/{YYYY-MM}.json` exists for every closed month that has at least one weekly, when monthly synthesis is enabled. | months | Not a violation — a plan item for step 7. |
+| I-10 | `monthly/{YYYY-MM}.json` exists for every closed month that has at least one weekly, when monthly synthesis is enabled. | months | Not a violation — a plan item for step 8. |
 | I-11 | `longitudinal/themes.json` equals the newest `longitudinal/themes/*.json` when the snapshot folder exists. | once | Flag `themes-pointer-stale`; copy the newest snapshot over `themes.json` (no model call). |
 | I-12 | `locks/` contains no lock older than 2 hours whose actor process is gone. | once | Release with a `lock-reaped` activity entry; the page it guarded is re-checked. |
+| I-13 | Every page has a `quality.json` no older than its `derived/page.jpg`, `classify.json`, `transcribe.json` and `meta.yaml`. | all pages | Not a violation — `notella_images.py scan` runs in step 2 for those pages (no model call). |
+| I-14 | No page at `phase ≥ transcribed` has `quality.json:orientation.status == suspected` with a concrete `suggested`. | pages ≥ transcribed | Flag `orientation-suspected`; list in the plan and in review "Image attention". **Not** auto-fixed: the fix is free, but the reprocess chain (transcribe → L1 → first-pass → actions → daily) costs model calls, so a person decides (`notella-images fix`, then the chain). |
+| I-15 | No two pages share `quality.json:sha256_raw` unless one is `duplicate_of` the other. | all pages | Flag `duplicate-raw-unmarked` with both ids; propose `notella-images mark-duplicate --page {later} --of {earlier}`; never applied under `--auto`. |
 
 Violations are listed at the top of the plan and the approval prompt, with page ids, before any pipeline counts.
 
@@ -33,7 +36,7 @@ Violations are listed at the top of the plan and the approval prompt, with page 
 | Gate | Rule |
 | --- | --- |
 | G-classify | `phase == intake` and `derived/page.jpg` exists and is non-empty. |
-| G-transcribe | `phase == classified` and `classify.json` valid. |
+| G-transcribe | `phase == classified` and `classify.json` valid, **and** `quality.json` is not `orientation.status == suspected` with a concrete `suggested` (the orientation gate — `notella-transcribe` Step 1b enforces it too). A gated page is reported as `orientation-blocked`, not as an error. |
 | G-L1-fanout | `phase == transcribed`; each specialist additionally requires its route_plan entry and content_mix threshold (`decision-checklist.md` step 2). |
 | **G-first-pass** | `phase == transcribed` **and the full required set is present (stub OK)**. This is the integrity gate. No flag, no `--auto`, and no `--reprocess` bypasses it. If a specialist failed, first-pass waits for the next run. |
 | G-actions | `first-pass.json` present, `route_plan ∋ action_decision`, `first-pass.action_intelligence.length ≥ 2`. |
@@ -44,7 +47,8 @@ Violations are listed at the top of the plan and the approval prompt, with page 
 | G-project | `manifest.projects` non-empty; slug exists; ≥ 1 attributed page at `phase ≥ indexed`. |
 | G-themes | `state.last_longitudinal_at` null or > 30 days ago, or `--themes-now`; ≥ 10 pages at `phase ≥ indexed`. |
 | G-monthly | the calendar month has closed; `monthly/{YYYY-MM}.json` missing; themes step for this run has completed (monthly consumes the themes delta); ≥ 1 weekly inside the month. |
-| G-review | `notella-review` is installed; there is something to review (open commitments > 14 days, yesterday's watch items, pages with ≥ 3 first-pass warnings, or verdict-pending ledger rows). |
+| G-principles | `notella-principles` installed; themes refreshed this run, or `principles.json` missing / older than the newest themes snapshot / > 30 days old. |
+| G-review | `notella-review` is installed; there is something to review (open commitments > 14 days, yesterday's watch items, pages with ≥ 3 first-pass warnings, image attention, held imports, unconfirmed principles, or verdict-pending ledger rows). |
 
 ## Post-invocation checks (Phase C, after each skill returns)
 

@@ -1,6 +1,6 @@
 # Stuck-page rules
 
-When `notella-orchestrator` treats a page as stuck, what it does about it at each age, and when it auto-archives (checklist step 8).
+When `notella-orchestrator` treats a page as stuck, what it does about it at each age, and when it auto-archives (checklist step 9).
 
 ## Definition
 
@@ -33,7 +33,7 @@ stuck           = hours_in_phase > threshold(phase) AND (gate_fails OR last_erro
 | 0 – 1× threshold | **Retry.** Re-queue the failed stage in this run. Most sticks are transient (rate limit, lock timeout). |
 | 1× – 3× threshold | **Retry with help.** Re-queue with `--reprocess` for the failing stage; for vision stages, re-verify `derived/page.jpg` (`heic-conversion.md` checks) and re-decode from `raw/` if it fails. Surface in the plan under "Stuck pages". |
 | 3× threshold – 7 days | **Surface, do not retry automatically.** List in plan and report with the last error. Under `--auto`, write the list to `logs/review-pending.md` so `notella-review` shows it. A human decides: fix the photo, `--reprocess` with a stronger model, or archive. |
-| > 7 days (168 h) | **Auto-archive** (step 8). `notella-state advance-phase {to: archived, by-actor: notella-orchestrator, reason: "stuck > 7d at <phase>"}`. The page keeps every artifact it has; `meta.yaml:errors` keeps the history; a `page.archived` event with `evidence.stuck: true` is emitted. Synthesis skips it (archived pages without a daily are excluded from I-8 when `evidence.stuck` is set). |
+| > 7 days (168 h) | **Auto-archive** (step 9). `notella-state advance-phase {to: archived, by-actor: notella-orchestrator, reason: "stuck > 7d at <phase>"}`. The page keeps every artifact it has; `meta.yaml:errors` keeps the history; a `page.archived` event with `evidence.stuck: true` is emitted. Synthesis skips it (archived pages without a daily are excluded from I-8 when `evidence.stuck` is set). |
 
 Auto-archive is the only destructive-looking action the orchestrator takes alone, and it is not destructive: nothing is deleted and `notella-state advance-phase {to: <previous phase>, reason: "unstick"}` reverses it. The report always lists auto-archived pages by id so the morning reader sees them.
 
@@ -67,3 +67,7 @@ Stuck pages (3):
 ```
 
 `notella-state list-pages --is-stuck --hours-stuck N` is the query behind it.
+
+## Orientation-blocked pages are not stuck
+
+A page held at `phase=classified` because its `quality.json` orientation is `suspected` with a concrete suggestion (the transcribe gate, `integrity-rules.md` G-transcribe) is waiting for a person, not failing. It is excluded from the stuck clock while it is listed in `logs/review-pending.md` under "Image attention" — it is never auto-archived for that reason. The clock starts again from the moment it is fixed (`orientation_fix.applied_at`) or cleared in review.

@@ -34,7 +34,7 @@ Reads, all through `notella-state`:
 | `longitudinal/verdicts.ndjson` | `list-verdicts --until={month_end}` | closed/dropped commitments, human verdicts on forecasts |
 | Pages with authoritative date in the month | `list-pages --since --until` | `pages_total`, `pages_by_project`, `pages_by_weekday` |
 
-The ledgers are contracts owned elsewhere and are only read here: `decisions.ndjson` and `commitments.ndjson` are built by the desktop aggregator (orchestrator Step 9, ledgers), `people.ndjson` by the same aggregator, and `verdicts.ndjson` is appended by `notella-review` (rows `{ts, target_kind, target_id, target_text, verdict, note, source_ref}`).
+The ledgers are contracts owned elsewhere and are only read here: `decisions.ndjson` and `commitments.ndjson` are built by the desktop aggregator (orchestrator Step 10, ledgers), `people.ndjson` by the same aggregator, and `verdicts.ndjson` is appended by `notella-review` (rows `{ts, target_kind, target_id, target_text, verdict, note, source_ref}`).
 
 **Output:**
 - `monthly/{YYYY-MM}.json` — monthly synthesis schema

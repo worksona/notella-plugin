@@ -24,6 +24,7 @@ What `notella-orchestrator` may fan out concurrently and what it must serialise.
 | weekly synthesis | weeks | 2 at once; usually only one is due |
 | project synthesis | slugs | 2–3 at once |
 | ledgers aggregation | — | single process; runs after dailies |
+| image scan (`notella_images.py scan`) | pages | one process; it runs its own pool (one worker per CPU, `sips` is the bottleneck) |
 
 ## Must serialise
 
@@ -34,8 +35,12 @@ What `notella-orchestrator` may fan out concurrently and what it must serialise.
 | metadata for the batch → project discovery → (if confirmed) `metadata --reprocess` → first-pass | first-pass reads canonical slugs; running it before backfill means re-running it |
 | daily synthesis for a date → weekly for the week containing it | weekly reads dailies |
 | weekly for the weeks in a month, themes refresh → monthly synthesis | monthly reads weeklies and the themes delta |
-| daily → ledgers aggregation (step 9) | ledgers read `daily/*.json:new_decisions` and `actions.json` |
-| everything → review (step 10) | review reads the run's outputs and `logs/review-pending.md` |
+| inbox check → hold → intake (step 1) | the hold moves duplicates out of `inbox/` before intake enumerates it |
+| intake → image scan → classify **per page** | classify reads `quality.json`'s orientation suggestion; the scan takes the page lock, so it runs after intake releases it |
+| classify's orientation fix → re-classify → transcribe **per page** | the fix rebuilds `derived/page.jpg`; transcribe must read the corrected image |
+| themes refresh → principles refresh (step 7) | principles read the fresh snapshot's `conceptual_evolution` |
+| daily → ledgers aggregation (step 10) | ledgers read `daily/*.json:new_decisions` and `actions.json` |
+| everything → review (step 11) | review reads the run's outputs and `logs/review-pending.md` |
 | themes refresh | one at a time, globally — it writes the themes pointer |
 | stuck-page auto-archive | after pipeline catch-up (a page may have been unstuck this run) |
 

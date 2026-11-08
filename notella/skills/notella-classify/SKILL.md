@@ -1,6 +1,6 @@
 ---
 name: notella-classify
-description: "Classify a notella page — diagnose doc_type, content_mix (text/diagram/table/symbolic %), and produce the route_plan that tells downstream specialists which agents to run. Use whenever the user says 'classify this page', 'what kind of page is this', 'diagnose page X', 'set up the route plan', or any request to determine how a page should be processed. Also trigger automatically when notella-orchestrator finds a page at phase=intake. Reads through `notella-state`; writes `classify.json` and advances phase to `classified`. Idempotent unless `--reprocess` is passed."
+description: "Classify a notella page — diagnose doc_type, content_mix (text/diagram/table/symbolic %), the page's orientation (upside down, sideways, mirrored — and the rotate/flip that makes it upright), and produce the route_plan that tells downstream specialists which agents to run. Fixes a confidently mis-oriented page via notella-images before advancing. Use whenever the user says 'classify this page', 'what kind of page is this', 'diagnose page X', 'set up the route plan', 'is this page upside down', or any request to determine how a page should be processed. Also trigger automatically when notella-orchestrator finds a page at phase=intake. Reads through `notella-state`; writes `classify.json` and advances phase to `classified`. Idempotent unless `--reprocess` is passed."
 ---
 
 # notella-classify — the page diagnostician
@@ -17,10 +17,11 @@ Diagnose the page's structural character and produce the `route_plan` array that
 - A page at `phase=intake`. Reads `pages/{page-id}/derived/page.jpg` (the canonical decode) and `pages/{page-id}/meta.yaml`.
 
 **Output:**
-- `pages/{page-id}/classify.json`
+- `pages/{page-id}/classify.json` (including `orientation`)
 - Page advanced to `phase=classified`
 - Mirror `content_mix` and `confidence` into `meta.yaml` for fast filtering
 - `page.classified` event emitted
+- When the page is confidently mis-oriented: `derived/page.jpg` rebuilt upright by `notella-images fix` (with its `correction` event) and the classification redone on the corrected image
 
 ## How a run executes
 
@@ -84,9 +85,16 @@ content_mix:
 route_plan: [string]                    # subset of manifest.route_plan_vocab
 confidence: 0.0-1.0
 fallback_strategy: string | "none"
+orientation:                            # what to do to the image to make the page upright and readable
+  rotate: 0 | 90 | 180 | 270            # clockwise degrees
+  flip: none | horizontal | vertical    # applied after the rotation
+  confidence: 0.0-1.0
+  evidence: string                      # one sentence: which cues decided it
 ```
 
-Refuse to write if validation fails; surface the error and leave the page at phase=intake.
+Refuse to write if validation fails; surface the error and leave the page at phase=intake. A response without `orientation` is accepted (older prompt) and written without it.
+
+**Legacy values.** Older `classify.json` files carry `"orientation": "upright"` or `"rotated_180"` (a string). They stay valid and readable: readers treat `"upright"` as `{rotate: 0, flip: none}`, `"rotated_180"` / `"upside_down"` as rotate 180, `"mirrored"` as flip horizontal, and any other string as "not upright, direction unknown". New writes always use the object form.
 
 ### Step 6 — Apply route_plan minimums
 
@@ -97,6 +105,29 @@ After validation, ensure the route_plan contains the minimum viable set even if 
 - `tagging` — always
 
 Do not silently drop entries the model added.
+
+### Step 6b — Orientation: correct before advancing
+
+Read `classify.orientation` and the page's `quality.json` (written at intake by `notella-images scan`; its `orientation.suggested` may come from the red series stamp found in the wrong corner).
+
+| Classify says | Action |
+| --- | --- |
+| `rotate == 0` and `flip == none` | Nothing. (If `quality.json` is `suspected` with a concrete suggestion and classify disagrees, leave it: transcribe will hold the page and `notella-review` shows it under "Image attention".) |
+| not upright, `confidence ≥ 0.7` — or `≥ 0.4` and it equals `quality.json`'s `suggested` | **Fix and re-classify** (below). |
+| not upright, `0.4 ≤ confidence < 0.7`, no agreement | Write the artifact as is, append to `meta.yaml:errors`: `"orientation suspected (rotate R, flip F, confidence C): {evidence}"`, and let `notella-images scan` mark the page `suspected` — review decides. |
+| not upright, `confidence < 0.4` | Ignore (noise); keep it in `classify.json` for the record. |
+
+**Fix and re-classify** — at most one correction loop per run:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/scripts/notella_images.py" fix --page {page-id} --rotate R --flip F
+```
+
+The transform is absolute relative to `raw/` (the script applies EXIF first): pass exactly what classify returned. The script rebuilds `derived/page.jpg` + `thumb.jpg`, records `meta.yaml:orientation_fix`, recomputes `quality.json` (status `fixed`) and writes a `correction` event (`correction_type: orientation-fix`). Then repeat Steps 3–6 on the corrected image and use **that** classification. If the second classification still says the page is not upright, write it, do not fix again, and add the `meta.yaml:errors` note above — a person looks next.
+
+Release and re-acquire the page lock around the script call (the script takes the page lock itself).
+
+Log the loop in `pipeline.ndjson` (`action: orientation-correction`, `rotate`, `flip`, `confidence`, `reclassified: true`).
 
 ### Step 7 — Write the artifact
 
@@ -139,6 +170,8 @@ evidence:
   confidence: <0-1>
   route_plan: [...]
   content_mix: { text, diagram, table, symbolic }
+  orientation: { rotate, flip, confidence }
+  orientation_fixed: true | false        # a fix was applied during this run
 ```
 
 ### Step 10 — Release the page lock
@@ -161,12 +194,16 @@ notella-state release-page-lock {page-id, actor: notella-classify}
 | Schema validation fails              | Surface error, do not write artifact, log diagnostics. |
 | Confidence < 0.60                    | Apply `fallback_strategy` if the model provided one (typically: "treat as handwritten_text"); proceed but mark `meta.yaml:errors` with a note. |
 | Page lock held                       | Wait up to 30s, then abort. |
+| `notella_images.py fix` fails (no sips, no raw) | Write the classification of the uncorrected image, note the failure in `meta.yaml:errors`, advance; transcribe will hold the page while `quality.json` is `suspected`. |
+| Corrected image still not upright | No second fix; errors note; surfaced by review. |
+| Classify and the red-stamp signal disagree | No fix unless classify alone is ≥ 0.7; the page waits for a person (review "Image attention"). |
 
 ## What this skill does NOT do
 
 - Does not transcribe — `notella-transcribe` is the next stage.
 - Does not infer projects, themes, or people — that's `notella-metadata`.
 - Does not look at any other pages.
+- Does not rotate pixels itself — it calls `notella-images` (`scripts/notella_images.py fix`), which owns `derived/` rebuilds and the `orientation_fix` record.
 
 ## Examples
 
@@ -180,9 +217,14 @@ content_mix: { text: 60, diagram: 30, table: 0, symbolic: 5 }
 route_plan: [transcription, semantic_structuring, diagram_interpretation, action_decision, composition, tagging]
 confidence: 0.91
 fallback_strategy: "none"
+orientation: { rotate: 0, flip: none, confidence: 0.95, evidence: "date stamp top-right, red stamp bottom-right, text reads left to right" }
 ```
 
 Phase advances to `classified`. `meta.yaml` updated with content_mix.
+
+### "Classify page 2026-05-02-p4q1" (photographed upside down)
+
+First pass returns `orientation: { rotate: 180, flip: none, confidence: 0.92, evidence: "date stamp upside down in the bottom-left; red stamp top-left" }`. The skill runs `notella_images.py fix --page 2026-05-02-p4q1 --rotate 180`, re-classifies the corrected image (now `rotate: 0`, confidence 0.94), writes that, and advances. One `correction` event (orientation-fix) and one `page.classified` event with `orientation_fixed: true`.
 
 ### "Reclassify page 2026-05-02-x7k2 with --reprocess"
 

@@ -32,6 +32,22 @@ notella-state get-page-artifact {page-id, artifact: classify}
 
 Verify `phase == classified`. Skip if `transcription` is not in `route_plan` (unusual but possible).
 
+### Step 1b — Orientation gate
+
+Read `pages/{page-id}/quality.json` (written by `notella-images scan` at intake and after every fix).
+
+| `orientation.status` | Action |
+| --- | --- |
+| `ok`, `fixed`, `unknown`, or no `quality.json` | Proceed. |
+| `suspected` with `suggested: null` (e.g. only low transcript confidence) | Proceed; the page is listed in review. |
+| `suspected` with a concrete `suggested` transform | **Refuse.** Return `{status: "blocked", reason: "orientation", suggested: {rotate, flip}, sources: [...]}`, log `pipeline.ndjson` with `status: blocked, reason: orientation`, leave the page at `phase=classified`, call no model. |
+
+A blocked page is unblocked by either:
+- `python3 "$CLAUDE_PLUGIN_ROOT/scripts/notella_images.py" fix --page {page-id} --rotate R --flip F` (status becomes `fixed`; re-run `notella-classify --reprocess` first if the route plan may change), or
+- a review verdict that it was a false alarm (`notella-review` "Image attention" → `wrong`), followed by `notella_images.py scan --pages {page-id} --force` (status becomes `ok`, source `review-cleared`).
+
+`--reprocess` does **not** bypass the gate: transcribing a sideways page is the expensive mistake this exists to prevent. `--ignore-orientation` does, for a person who has looked at the page and wants the transcript anyway.
+
 ### Step 2 — Acquire the page lock
 
 ```
@@ -131,7 +147,8 @@ notella-state release-page-lock {page-id, actor: notella-transcribe}
 | ------------------------------------------------- | -------- |
 | Confidence below 0.50                             | Write artifact anyway with the low confidence; surface in batch summary; user can request `--reprocess` with a stronger model. |
 | Heavily-marked page (`emphasis_count > 30`)       | Often correlates with strategy notes; expected, no special action. |
-| Page rotation detected mid-call                   | The model handles intra-call rotation; if confidence remains low, suggest re-photographing. |
+| `quality.json` orientation suspected with a suggestion | Blocked before the model call (Step 1b); no tokens spent. |
+| Page rotation detected mid-call                   | The model handles intra-call rotation; if `transcriptConfidence` < 0.45 the next `notella-images scan` marks the page `suspected` (source `low-transcript-confidence`) so a person looks at it; if it is upright, suggest re-photographing. |
 | Vision API timeout                                | Retry once; on second failure, surface error and leave at phase=classified. |
 
 ## What this skill does NOT do
@@ -139,12 +156,20 @@ notella-state release-page-lock {page-id, actor: notella-transcribe}
 - Does not interpret diagrams. That's `notella-diagram`. (The transcribe prompt does emit `[diagram label: "..."]` markers in cleanedTranscript for spatial reference, but does not extract structure.)
 - Does not infer projects/themes/people. That's `notella-metadata`.
 - Does not run on pages whose `route_plan` excludes `transcription` (rare; whiteboard photos sometimes do).
+- Does not run on a page whose `quality.json` says it is mis-oriented with a concrete fix pending; it does not fix the page itself (that is `notella-images`).
 
 ## Examples
 
 ### "Transcribe page 2026-05-02-x7k2"
 
 Calls Sonnet 4.6 with the image. Produces ~1800-char rawTranscript, structured markdown cleanedTranscript with hierarchy preserved, marginalia[] = 3 entries, emphasis[] = 7 entries, extractedDate=2026-05-02, extractedPageNumber=47, transcriptConfidence=0.86. Phase advances to `transcribed`.
+
+### "Transcribe page 2026-05-02-p4q1" (upside down, not yet fixed)
+
+```
+blocked: orientation — quality.json suggests rotate 180 (stamp-position).
+Fix with: notella_images.py fix --page 2026-05-02-p4q1 --rotate 180, then re-run.
+```
 
 ### "Re-transcribe page 2026-05-02-x7k2 --reprocess --model=claude-opus-4-6"
 
