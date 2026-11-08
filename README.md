@@ -41,3 +41,7 @@ The facility defaults to `~/notella`; set `NL_DIR` to point the skills (and the 
 The plugin bundles one tool, `notella/scripts/notella_images.py` (Python ≥ 3.9 standard library + macOS `sips`, no other dependencies): `scan`, `fix`, `mark-duplicate`, `audit`, `inbox-check`, `stage`, `hold`, `release`, `selftest`. Skills call it as `python3 "$CLAUDE_PLUGIN_ROOT/scripts/notella_images.py"`; `--help` documents every subcommand.
 
 This repo is the canonical source of the notella skills — edit them here, under `notella/skills/`. The app that displays their output is [worksona/notella-desktop](https://github.com/worksona/notella-desktop).
+
+## Models
+
+Each stage runs on the model named in the facility's `cost-controls.yaml` `model_defaults` (aliases `haiku`, `sonnet`, `opus`, `fable`). The orchestrator enforces it by dispatching every model stage to a Claude Code subagent with that model; usage is logged from the subagent's measured figures. Current routing — haiku: classify (incl. orientation), composition, metadata; sonnet: transcribe, diagram, sketch, table, first-pass, actions, daily brief; opus: weekly, project, themes, principles, monthly. It was chosen by the evals in `evals/` (results: `evals/RESULTS-2026-11-08.md`); re-run them when a model ships before changing a stage.

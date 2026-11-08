@@ -5,15 +5,15 @@
     "url": "https://github.com/worksona"
   },
   "metadata": {
-    "description": "Skills for notella \u2014 handwritten note intelligence on your own machine.",
-    "version": "0.3.0"
+    "description": "Skills for notella — handwritten note intelligence on your own machine.",
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "notella",
       "source": "./notella",
       "description": "The notella pipeline: 22 Claude skills that turn photographed handwritten notebook pages in ~/notella/ into transcripts, structure, actions, daily/weekly/monthly/project syntheses with memory of their predecessors, longitudinal theme snapshots with deltas, guiding principles, ledgers (decisions, commitments, people, imports) and a human verdict loop (notella-review); image quality and orientation checks (upside-down, sideways, mirrored pages fixed from raw) and duplicate-safe imports (notella-images, notella-import). Operates the local notella-state facility; pairs with notella-desktop.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "category": "productivity"
     }
   ]

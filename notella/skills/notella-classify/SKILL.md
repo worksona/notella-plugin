@@ -28,7 +28,7 @@ Diagnose the page's structural character and produce the `route_plan` array that
 ### Step 1 — Read configuration
 
 ```
-notella-state get-manifest → manifest.model_defaults.classify
+notella-state get-manifest → cost-controls.yaml:model_defaults.classify
 notella-state get-page {page-id} → meta.yaml + artifact manifest
 ```
 
@@ -56,7 +56,7 @@ Include `derived/page.jpg` as the image input.
 
 ### Step 4 — Call the model
 
-Provider/model from `manifest.model_defaults.classify` (default `claude-haiku-4-5`).
+Runs on the model in `cost-controls.yaml` `model_defaults.classify` (currently `haiku`, chosen by the 2026-11-08 eval: orientation 12/12 on known pages, same as sonnet). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 Log via `notella-state log-llm-call`:
 
@@ -65,7 +65,7 @@ actor: notella-classify
 page_id: {page-id}
 task: classify
 provider: anthropic
-model: claude-haiku-4-5
+model: claude-haiku-5-5
 tokens: { input, output }
 latency_ms: <ms>
 status: complete

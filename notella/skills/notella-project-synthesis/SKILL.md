@@ -37,7 +37,7 @@ The `projects/{slug}/` folder already accumulates one brief per run. What it lac
 ### Step 1 — Read configuration & pages
 
 ```
-notella-state get-manifest → manifest.model_defaults.project_synthesis, manifest.projects.<slug>
+notella-state get-manifest → cost-controls.yaml:model_defaults.project_synthesis, manifest.projects.<slug>
 notella-state list-pages --project={slug} --since=<since?> --until=<until?>
 ```
 
@@ -95,7 +95,7 @@ When `previous` is null, omit the block; the brief is a first assessment.
 
 ### Step 5 — Call the model
 
-Default: `claude-opus-4-6`.
+Runs on the model in `cost-controls.yaml` `model_defaults.project_synthesis` (currently `opus`, chosen by the 2026-11-08 eval: cross-page reasoning, run rarely). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 6 — Validate
 
@@ -217,7 +217,7 @@ Pages attributed to project-sunshine: 14 (2026-04-12 → 2026-05-02)
 Previous brief: projects/project-sunshine/2026-04-25.json (4 commitments, risk moderate)
 Verdicts on its commitments since then: 1 (done)
 Pages added since previous brief: 5
-Synthesizing with claude-opus-4-6...
+Synthesizing with claude-opus-5-5...
 Generated projects/project-sunshine/2026-05-02.json (8 sections, 3 commitments, 2 blockers)
   since last: 1 commitment done (verdict), 1 on_track → at_risk, 1 new drift signal, risk moderate → high (up)
 Generated projects/project-sunshine/2026-05-02.md (2104 words)

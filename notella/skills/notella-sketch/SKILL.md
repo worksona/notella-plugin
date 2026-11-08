@@ -25,7 +25,7 @@ Many notebook pages contain illustrations that aren't structural — a quick fac
 ### Step 1 — Read configuration & page
 
 ```
-notella-state get-manifest → manifest.model_defaults.sketch
+notella-state get-manifest → cost-controls.yaml:model_defaults.sketch
 notella-state get-page-artifact {page-id, artifact: classify}
 notella-state get-page-artifact {page-id, artifact: transcribe}
 ```
@@ -51,7 +51,7 @@ plus `sketch_count` and `ambiguities[]`. The user prompt carries the classificat
 
 ### Step 4 — Call the model
 
-Default: `claude-sonnet-4-6` (vision).
+Runs on the model in `cost-controls.yaml` `model_defaults.sketch` (currently `sonnet`, chosen by the 2026-11-08 eval: haiku key recall on sketch pages matched sonnet but word recall was weaker; kept with the other vision readers). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 5 — Validate
 

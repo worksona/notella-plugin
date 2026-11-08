@@ -24,7 +24,7 @@ Capture the action surface of a page completely so the corpus can answer "what's
 ### Step 1 — Read configuration & artifacts
 
 ```
-notella-state get-manifest → manifest.model_defaults.actions
+notella-state get-manifest → cost-controls.yaml:model_defaults.actions
 notella-state get-page-artifact {page-id, artifact: transcribe}
 notella-state get-page-artifact {page-id, artifact: first-pass}
 notella-state get-page-artifact {page-id, artifact: classify}
@@ -51,7 +51,7 @@ Use the prompt in `references/actions-prompt.md` — the complete system and use
 
 ### Step 4 — Call the model
 
-Default: `claude-sonnet-4-6`.
+Runs on the model in `cost-controls.yaml` `model_defaults.actions` (currently `sonnet`, chosen by the 2026-11-08 eval: judgment over every page). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 5 — Validate
 

@@ -25,7 +25,7 @@ Pull out the structured signal a transcript carries — title, summary, tags, ev
 ### Step 1 — Read configuration & page
 
 ```
-notella-state get-manifest → manifest.model_defaults.metadata, manifest.projects, manifest.people_aliases
+notella-state get-manifest → cost-controls.yaml:model_defaults.metadata, manifest.projects, manifest.people_aliases
 notella-state get-page-artifact {page-id, artifact: transcribe}
 ```
 
@@ -61,7 +61,7 @@ they may be added to the manifest later.
 
 ### Step 4 — Call the model
 
-Default: `claude-haiku-4-5` (text-only task; cheap).
+Runs on the model in `cost-controls.yaml` `model_defaults.metadata` (currently `haiku`, chosen by the 2026-11-08 eval: text-only field extraction). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 5 — Validate
 

@@ -1,0 +1,82 @@
+[
+ {
+  "id": "2025-12-16-18d2",
+  "group": "dense text",
+  "existing_chars": 1145
+ },
+ {
+  "id": "2025-12-28-3200",
+  "group": "dense text",
+  "existing_chars": 1158
+ },
+ {
+  "id": "2025-12-17-138b",
+  "group": "dense text",
+  "existing_chars": 1309
+ },
+ {
+  "id": "2026-02-04-1w8v",
+  "group": "diagram heavy",
+  "existing_chars": 782
+ },
+ {
+  "id": "2026-03-28-z0xz",
+  "group": "diagram heavy",
+  "existing_chars": 215
+ },
+ {
+  "id": "2026-03-12-ckhk",
+  "group": "diagram heavy",
+  "existing_chars": 322
+ },
+ {
+  "id": "2025-12-25-2d49",
+  "group": "mixed text+diagram",
+  "existing_chars": 1085
+ },
+ {
+  "id": "2026-01-30-1fp9",
+  "group": "mixed text+diagram",
+  "existing_chars": 800
+ },
+ {
+  "id": "2026-03-23-9ka9",
+  "group": "low contrast (fair grade)",
+  "existing_chars": 310
+ },
+ {
+  "id": "2026-04-22-smp8",
+  "group": "low contrast (fair grade)",
+  "existing_chars": 143
+ },
+ {
+  "id": "2026-02-09-vr1w",
+  "group": "was upside down (fixed 180)",
+  "existing_chars": 425
+ },
+ {
+  "id": "2026-01-29-cy5s",
+  "group": "was upside down (fixed 180)",
+  "existing_chars": 686
+ },
+ {
+  "id": "2026-03-07-xj3g",
+  "group": "was sideways (fixed 90/270)",
+  "existing_chars": 329
+ },
+ {
+  "id": "2026-03-09-mbe5",
+  "group": "was sideways (fixed 90/270)",
+  "existing_chars": 372
+ },
+ {
+  "id": "2026-02-11-wzyt",
+  "group": "sketch present",
+  "existing_chars": 513
+ },
+ {
+  "id": "2026-03-20-7vkn",
+  "group": "sparse page",
+  "existing_chars": 340
+ }
+]

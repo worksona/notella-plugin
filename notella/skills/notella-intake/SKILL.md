@@ -77,7 +77,7 @@ Record `source_capture_time` per file; null if no EXIF and PDF metadata both fai
 
 ### Step 3b — Extract page-embedded date and page numbers via vision
 
-After producing `derived/page.jpg`, make a single lightweight vision call (claude-haiku-4-5) to extract structured metadata written directly on the page:
+After producing `derived/page.jpg`, make a single lightweight vision call (model `cost-controls.yaml` `model_defaults.intake_page_metadata`, currently `haiku`) to extract structured metadata written directly on the page:
 
 **Top-right corner:** pages always carry a date stamp and a page number in the format `MM-DD` (e.g. `12-23` = December 23rd). The year is inferred from the EXIF capture year (or current year if EXIF is absent).
 

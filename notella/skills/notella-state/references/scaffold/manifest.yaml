@@ -71,20 +71,26 @@ intake:
 # Model defaults — per-task; overridable per call.
 # Light tasks → Haiku. Vision + reasoning → Sonnet. Synthesis → Opus.
 model_defaults:
-  classify: claude-haiku-4-5
-  transcribe: claude-sonnet-4-6
-  composition: claude-haiku-4-5
-  metadata: claude-haiku-4-5
-  first_pass: claude-sonnet-4-6
-  actions: claude-sonnet-4-6
-  diagram: claude-sonnet-4-6
-  sketch: claude-sonnet-4-6
-  table: claude-sonnet-4-6
-  daily_synthesis: claude-opus-4-6
-  project_synthesis: claude-opus-4-6
-  weekly_synthesis: claude-opus-4-6
-  monthly_synthesis: claude-opus-4-6      # falls back to `themes` when absent
-  themes: claude-opus-4-6
+  # Claude Code Agent-tool aliases (haiku | sonnet | opus | fable). The
+  # orchestrator dispatches each stage to a subagent with this model. On a
+  # facility that keeps cost-controls.yaml, that file's model_defaults wins.
+  # Chosen by evals/RESULTS-2026-11-08.md; re-run the eval before changing.
+  classify: haiku
+  intake_page_metadata: haiku
+  composition: haiku
+  metadata: haiku
+  transcribe: sonnet
+  diagram: sonnet
+  sketch: sonnet
+  table: sonnet
+  first_pass: sonnet
+  actions: sonnet
+  daily_synthesis: sonnet
+  weekly_synthesis: opus
+  project_synthesis: opus
+  themes: opus
+  principles: opus
+  monthly_synthesis: opus      # falls back to `themes` when absent
 
 # Provider keys — references, never values.
 # `env` means the skill reads ANTHROPIC_API_KEY from the environment.

@@ -25,7 +25,7 @@ Convert handwritten content into queryable text without losing structural signal
 ### Step 1 — Read configuration & page
 
 ```
-notella-state get-manifest → manifest.model_defaults.transcribe
+notella-state get-manifest → cost-controls.yaml:model_defaults.transcribe
 notella-state get-page {page-id}
 notella-state get-page-artifact {page-id, artifact: classify}
 ```
@@ -85,7 +85,7 @@ The prompt also asks for `extractedDateRaw` (the date exactly as written) alongs
 
 ### Step 4 — Call the model
 
-Provider/model from `manifest.model_defaults.transcribe` (default `claude-sonnet-4-6`). Log the call.
+Runs on the model in `cost-controls.yaml` `model_defaults.transcribe` (currently `sonnet`, chosen by the 2026-11-08 eval: key-token recall 0.96 vs haiku 0.88; opus 0.96 at twice the price). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model. Log the call with measured usage (see notella-state log-llm-call).
 
 ### Step 5 — Validate
 
@@ -171,7 +171,7 @@ blocked: orientation — quality.json suggests rotate 180 (stamp-position).
 Fix with: notella_images.py fix --page 2026-05-02-p4q1 --rotate 180, then re-run.
 ```
 
-### "Re-transcribe page 2026-05-02-x7k2 --reprocess --model=claude-opus-4-6"
+### "Re-transcribe page 2026-05-02-x7k2 --reprocess --model=opus"
 
 Overrides default model. Overwrites transcribe.json. Emits correction event.
 

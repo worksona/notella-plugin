@@ -27,7 +27,7 @@ Composition is what later supports queries like: "show pages where the conclusio
 ### Step 1 — Read configuration & page
 
 ```
-notella-state get-manifest → manifest.model_defaults.composition
+notella-state get-manifest → cost-controls.yaml:model_defaults.composition
 notella-state get-page {page-id}
 notella-state get-page-artifact {page-id, artifact: transcribe}
 ```
@@ -57,7 +57,7 @@ Include `derived/page.jpg`.
 
 ### Step 4 — Call the model
 
-Default model: `claude-haiku-4-5` (vision-capable, lighter task).
+Runs on the model in `cost-controls.yaml` `model_defaults.composition` (currently `haiku`, chosen by the 2026-11-08 eval: layout zoning is a light vision task). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 5 — Validate
 
