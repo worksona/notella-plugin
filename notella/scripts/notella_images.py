@@ -855,6 +855,13 @@ def orientation_status(root, pid, meta_text, raw_exif, derived_info, cleared):
             sources.append("classify-legacy")
             sugg["classify-legacy"] = LEGACY_ORIENTATION.get(key)
     stamp = derived_info.get("stamp")
+    verified = False          # positive evidence the page is upright (not just "nobody said otherwise")
+    if isinstance(o, dict) and o.get("rotate") is not None:
+        try:
+            verified = int(o.get("rotate", 0)) % 360 == 0 and (o.get("flip") or "none") == "none" \
+                and float(o.get("confidence") or 0) >= 0.7
+        except (TypeError, ValueError):
+            verified = False
     if stamp:
         known = True
         t = stamp_transform(stamp, derived_info.get("landscape", True))
@@ -862,6 +869,8 @@ def orientation_status(root, pid, meta_text, raw_exif, derived_info, cleared):
             sources.append("stamp-position")
             # a stamp in a mirrored position may also be a rotation: needs a look
             sugg["stamp-position"] = t if t["flip"] == "none" else None
+        elif t:
+            verified = True
     if raw_exif not in (None, 1):
         known = True
         if not derived_info.get("auto_oriented", False):
@@ -882,6 +891,11 @@ def orientation_status(root, pid, meta_text, raw_exif, derived_info, cleared):
                 suggestion = sugg[k]
                 break
         return {"status": "suspected", "suggested": suggestion, "sources": sources}
+    if not verified:
+        # No stamp found and no confident vision verdict: the legacy classifier's "upright"
+        # proved unreliable (2026-11-08 pilot: upside-down May pages passed as ok), so the
+        # page needs a vision check (notella-images) before it is trusted.
+        return {"status": "unknown", "suggested": None, "sources": ["no-stamp"]}
     return {"status": "ok" if known else "unknown", "suggested": None, "sources": []}
 
 
