@@ -54,7 +54,7 @@ today = now in identity.timezone
 if today <= month_end and not --partial: abort {status: "month-not-closed", month}
 if monthly/{month}.json exists and not --reprocess: return {status: "exists", path}
 
-notella-state get-manifest → manifest.model_defaults.monthly_synthesis (fallback: model_defaults.themes), identity.timezone
+notella-state get-manifest → cost-controls.yaml:model_defaults.monthly_synthesis (fallback: model_defaults.themes), identity.timezone
 ```
 
 Where the facility keeps model defaults in `cost-controls.yaml` rather than the manifest, read `model_defaults.monthly_synthesis` there, with the same fallback to `themes`.
@@ -163,7 +163,7 @@ User prompt: the measurements block (Step 3) as JSON, the weeklies as `{iso_week
 
 ### Step 5 — Call the model
 
-Default: `model_defaults.monthly_synthesis`, falling back to `model_defaults.themes` (`claude-opus-4-6`). Use prompt caching on the system block. Cost ≈ one themes refresh (~$1.80 at current estimates); the monthly scheduled task runs this once, after the themes refresh.
+Runs on `model_defaults.monthly_synthesis` (currently `opus`), falling back to `model_defaults.themes`; the orchestrator dispatches a subagent with that model. Use prompt caching on the system block. Cost ≈ one themes refresh (~$1.80 at current estimates); the monthly scheduled task runs this once, after the themes refresh.
 
 ### Step 6 — Validate
 
@@ -304,7 +304,7 @@ Decisions: 9 candidates
 Commitments: 31 open — <7d 3, 7-30d 9, 30-90d 14, >90d 5 — closed 6, dropped 2
 People: new 2, steady 9, gone quiet 3
 Scorecard rows: 4 from monthly/2026-04.json, 4 from longitudinal/themes/2026-05-09.json (2 with human verdicts)
-Synthesizing with claude-opus-4-6...
+Synthesizing with claude-opus-5-5...
 Validated ✓
 Wrote monthly/2026-05.json, monthly/2026-05.md
 synthesis.monthly event emitted.

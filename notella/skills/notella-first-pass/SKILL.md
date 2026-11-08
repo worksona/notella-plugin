@@ -25,7 +25,7 @@ Take all of Layer 1 — transcribe, composition, diagram, sketch, table, metadat
 ### Step 1 — Read configuration & all Layer-1 artifacts
 
 ```
-notella-state get-manifest → manifest.model_defaults.first_pass
+notella-state get-manifest → cost-controls.yaml:model_defaults.first_pass
 notella-state get-page-artifact {page-id, artifact: transcribe}
 notella-state get-page-artifact {page-id, artifact: composition}
 notella-state get-page-artifact {page-id, artifact: metadata}
@@ -86,7 +86,7 @@ The first-pass model reads all of this and produces a coherent semantic integrat
 
 ### Step 4 — Call the model
 
-Default: `claude-sonnet-4-6`. **Always use prompt caching** (`cache_control: { type: "ephemeral" }`) on the system prompt block — the system prompt is large (~5-7k tokens) and identical across every page in a batch. Cache TTL of 5 minutes covers a typical orchestrator batch and yields ~90% discount on cached input tokens for the second through Nth call.
+Runs on the model in `cost-controls.yaml` `model_defaults.first_pass` (currently `sonnet`, chosen by the 2026-11-08 eval: the meaning layer every synthesis reads). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model. **Always use prompt caching** (`cache_control: { type: "ephemeral" }`) on the system prompt block — the system prompt is large (~5-7k tokens) and identical across every page in a batch. Cache TTL of 5 minutes covers a typical orchestrator batch and yields ~90% discount on cached input tokens for the second through Nth call.
 
 ### Step 5 — Validate against the focused six-section schema
 

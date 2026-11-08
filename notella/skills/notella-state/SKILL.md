@@ -250,7 +250,7 @@ If preconditions fail, return `{status: "blocked", missing: [...]}` without muta
 
 **log-pipeline-run** `{actor, page_id, artifact, status, duration_ms, error?}` — append to `logs/pipeline.ndjson`.
 
-**log-llm-call** `{actor, page_id?, task, provider, model, tokens, latency_ms, status, prompt_excerpt?, error?}` — append to `logs/llm-calls.ndjson`.
+**log-llm-call** `{actor, task, model, alias?, page_id? | pages?, tokens, duration_ms | latency_ms, status, measured, source, prompt_excerpt?, error?}` — append to `logs/llm-calls.ndjson`. `measured: true` only for figures read from a real usage report (a subagent's completion usage, `claude -p --output-format json` `modelUsage`, or an API `usage` block); `source` names which. Never invent or template token counts: lines written before 2026-11-08 carry fixed per-task estimates and are not spend. Readers (budget check, Costs screen) count only `measured: true`.
 
 **log-skill-run** `{skill, args, outcome, duration_ms}` — append to `logs/skills.ndjson`. No lock needed.
 

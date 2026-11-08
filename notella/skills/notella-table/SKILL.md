@@ -25,7 +25,7 @@ Make tabular content queryable across pages. "Find every 2×2 about pricing" or 
 ### Step 1 — Read configuration & page
 
 ```
-notella-state get-manifest → manifest.model_defaults.table
+notella-state get-manifest → cost-controls.yaml:model_defaults.table
 notella-state get-page-artifact {page-id, artifact: transcribe}
 ```
 
@@ -47,7 +47,7 @@ plus `table_count`. The user prompt carries the classification context and the t
 
 ### Step 4 — Call the model
 
-Default: `claude-sonnet-4-6`.
+Runs on the model in `cost-controls.yaml` `model_defaults.table` (currently `sonnet`, chosen by the 2026-11-08 eval: cell-level reading). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 5 — Validate
 

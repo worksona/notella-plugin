@@ -40,7 +40,7 @@ The page's authoritative date is, in order: `metadata.json:date`, then `transcri
 ### Step 1 — Read configuration & pages
 
 ```
-notella-state get-manifest → manifest.model_defaults.daily_synthesis
+notella-state get-manifest → cost-controls.yaml:model_defaults.daily_synthesis
 notella-state list-pages --since={date}T00:00:00 --until={date}T23:59:59 --phase=indexed
 ```
 
@@ -122,7 +122,7 @@ You are continuing a brief, not starting one. Rules:
 
 ### Step 5 — Call the model
 
-Default: `claude-opus-4-6` (synthesis-heavy, reasoning depth pays).
+Runs on the model in `cost-controls.yaml` `model_defaults.daily_synthesis` (currently `sonnet`, chosen by the 2026-11-08 eval: a short daily brief; weekly and monthly carry the depth). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 **Use prompt caching** (`cache_control: { type: "ephemeral" }`) on the system prompt block. Daily synthesis often gets re-run (catch-up batches, `--reprocess`, multiple back-to-back days), and the Opus system prompt is large. A single batch covering 7-10 dates pays the system-prompt cost once instead of N times — ~80-90% discount on the cached portion for runs 2..N. The memory block lives in the user turn and is not cached.
 
@@ -291,7 +291,7 @@ Each emits a `page.archived` event referencing this synthesis.
 Pages found at phase=indexed for 2026-05-02: 4
 Predecessor: daily/2026-05-01.json (3 decisions, 2 questions, 3 priorities open)
 Open weekly actions from 2026-W17: 5 · verdicts since 2026-05-01: 1 (done)
-Synthesizing with claude-opus-4-6...
+Synthesizing with claude-sonnet-5-5...
 Theme of the day: "Locking the AIMQC Sprint 3 scope before the NRCAN call."
 Generated daily/2026-05-02.json — 2 resolved, 4 carried, 5 new
 Generated daily/2026-05-02.md (1842 words)
@@ -310,7 +310,7 @@ daily/2026-05-02.json exists. Pass --reprocess to overwrite.
 ```
 Pages found at phase=indexed for 2025-12-01: 4
 Predecessor: none (first brief)
-Synthesizing with claude-opus-4-6...
+Synthesizing with claude-sonnet-5-5...
 Generated daily/2025-12-01.json — 0 resolved, 0 carried, 9 new
 ```
 

@@ -44,7 +44,7 @@ Reads:
 ### Step 1 — Read configuration, corpus, and previous snapshot
 
 ```
-notella-state get-manifest → manifest.model_defaults.themes, manifest.bootstrap_themes, identity.timezone
+notella-state get-manifest → cost-controls.yaml:model_defaults.themes, manifest.bootstrap_themes, identity.timezone
 notella-state list-pages --phase=archived      # plus --since when given
 notella-state list-dailies
 notella-state list-weeklies
@@ -173,7 +173,7 @@ User prompt: the pre-aggregated signals as JSON, the `delta` block as JSON, the 
 
 ### Step 5 — Call the model
 
-Default: `manifest.model_defaults.themes` (`claude-opus-4-6`).
+Runs on the model in `cost-controls.yaml` `model_defaults.themes` (currently `opus`, chosen by the 2026-11-08 eval: whole-corpus pattern reasoning, monthly). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 6 — Validate
 
@@ -249,7 +249,7 @@ notella-state log-longitudinal {kind: themes, json, md}
     "weight_changes": 3, "trajectory_changes": 2,
     "emergent_promoted": 1, "emergent_dropped": 2
   },
-  "model": "claude-opus-4-6"
+  "model": "claude-opus-5-5"
 }
 ```
 
@@ -297,7 +297,7 @@ Pre-aggregating signals: 94 tags, 33 themes, 15 projects, 24 people
 Delta: +41 pages | new 1 (project-state-governance) | gone 0 |
        weight changes 3 | trajectory changes 2 |
        emergent promoted 1 (ascencion-governance-framework) | emergent dropped 2
-Synthesizing with claude-opus-4-6...
+Synthesizing with claude-opus-5-5...
 Validated: grounding ✓ window ✓ delta consistency ✓ (delta_notes: 1 disagreement, explained)
 Wrote longitudinal/themes/2026-06-01.json → copied to longitudinal/themes.json
 Rendered longitudinal/themes.md

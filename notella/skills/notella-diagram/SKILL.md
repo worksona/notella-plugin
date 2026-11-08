@@ -25,7 +25,7 @@ Convert structural visual content into queryable typed nodes and edges. A diagra
 ### Step 1 — Read configuration & page
 
 ```
-notella-state get-manifest → manifest.model_defaults.diagram
+notella-state get-manifest → cost-controls.yaml:model_defaults.diagram
 notella-state get-page-artifact {page-id, artifact: classify}
 notella-state get-page-artifact {page-id, artifact: transcribe}
 ```
@@ -46,7 +46,7 @@ Include `derived/page.jpg` and the transcript text (for label-disambiguation gro
 
 ### Step 4 — Call the model
 
-Default: `claude-sonnet-4-6` (vision-capable, structure-heavy).
+Runs on the model in `cost-controls.yaml` `model_defaults.diagram` (currently `sonnet`, chosen by the 2026-11-08 eval: haiku key-token recall on diagram-heavy pages 0.82 vs sonnet 0.93). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model.
 
 ### Step 5 — Validate
 

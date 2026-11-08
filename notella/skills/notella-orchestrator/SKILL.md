@@ -32,6 +32,7 @@ The orchestrator is **thin**: it never writes page artifacts itself (stubs excep
 | `--skip-project` | skip step 5 |
 | `--skip-themes` | skip step 6 (and therefore step 8, which needs the themes delta; step 7 runs only if already due against an existing snapshot) |
 | `--skip-principles` | skip step 7 |
+| `--model-override <stage>=<alias>` | run one stage on another model for this run (repeatable); see Model routing |
 | `--skip-monthly` | skip step 8 |
 | `--skip-review` | skip step 11 |
 
@@ -370,12 +371,16 @@ budget_status:
 
 **Pre-flight cost check.** Before entering Phase B, read the live budget snapshot — `GET http://localhost:3344/api/budget` when the dev server is up, otherwise sum `logs/llm-calls.ndjson` for today and this month against `cost-controls.yaml:budgets`. Estimate the plan's cost using:
 
+Per-stage cost follows the stage's model (see Model routing). Measured on 2026-11-08: a page-level stage in a Claude Code subagent uses about 15k tokens per page whatever the model (image, instructions and tool overhead dominate), so cost scales with the model's price: haiku ≈ $0.003, sonnet ≈ $0.05, opus ≈ $0.10 per page per stage (API-equivalent list prices; on a Claude plan this is usage-limit consumption, not billing).
+
 | Work | Estimate |
 | --- | --- |
-| L1 vision specialists | ~$0.07 / page (when all run; less when conditional skips fire) |
-| first-pass | ~$0.020 / page (post-cache) |
-| actions | ~$0.030 / page (when run) |
-| daily synth | ~$0.16 / day (post-cache) |
+| classify + composition + metadata (haiku) | ~$0.01 / page |
+| transcribe (sonnet) | ~$0.05 / page |
+| diagram / sketch / table (sonnet, when routed) | ~$0.05 / page each |
+| first-pass (sonnet) | ~$0.05 / page |
+| actions (sonnet) | ~$0.05 / page (when run) |
+| daily synth (sonnet) | ~$0.10 / day |
 | weekly synth | ~$0.55 / week |
 | project synth | ~$0.40 / refresh |
 | themes | ~$1.80 / refresh |
@@ -450,6 +455,18 @@ Choose:
 ### Phase C — Execute
 
 Invoke each skill in plan order. For pipeline catch-up, group by stage and parallelize across pages. Stop on first hard error per stage; collect soft errors and report at the end.
+
+#### Model routing (every stage that calls a model)
+
+Each stage runs on the model named in `cost-controls.yaml` `model_defaults.<stage>` — a Claude Code Agent-tool alias (`haiku`, `sonnet`, `opus`, `fable`). Enforce it by **dispatching the stage to a subagent with that model**, never by running the stage inline in this session (the session's own model would be used instead):
+
+- **Page stages** (classify, transcribe, composition, metadata, diagram, sketch, table, first-pass, actions): one `Agent` call per batch of **at most 8 pages**, `subagent_type: general-purpose`, `model: <alias>`. Prompt: the facility path (`NL_DIR`), the page ids, and "for each page, run the `notella-<stage>` skill (read `$CLAUDE_PLUGIN_ROOT/skills/notella-<stage>/SKILL.md` and follow it); write only that stage's artifact and its event; report per page: done / skipped / error, and your exact model ID". Batches of one stage run in parallel; stages stay in the dependency order below.
+- **Synthesis stages** (daily, weekly, project, themes, principles, monthly): one subagent per unit of work (one date, one week, one slug, one month) with the stage's alias. Dailies stay oldest-first and sequential (each reads its predecessor).
+- **No model**: inbox check, hold, image scan, orientation fix, ledgers, stuck archive, and review run here, in the session.
+- `--model-override <stage>=<alias>` (repeatable) changes one stage for this run only, e.g. to re-run an eval arm; it is reported in Phase D.
+- A missing or unknown alias falls back to `sonnet` with a warning in the report. `review: none` means no subagent.
+
+**Usage logging.** After each subagent returns, append ONE line per subagent to `logs/llm-calls.ndjson` through `notella-state log-llm-call` with the measured figures from the subagent's completion report: `{actor: "notella-<stage>", task, model (the exact model ID the subagent reported), alias, pages: [...], tokens: {total: <subagent tokens>}, duration_ms, measured: true, source: "subagent-usage"}`. Never write per-page token counts that were not measured; if no usage figure is available, log `measured: false` and no tokens. The budget check reads only these lines.
 
 **Execution sequence:**
 1. inbox check → hold duplicates → drain

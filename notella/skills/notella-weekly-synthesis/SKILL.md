@@ -41,7 +41,7 @@ A weekly without memory re-detects the same themes every Monday and never learns
 iso_week = isoformat(date)              # e.g. "2026-W18"
 dates_in_week = [Mon..Sun for that week]
 
-notella-state get-manifest → manifest.model_defaults.weekly_synthesis
+notella-state get-manifest → cost-controls.yaml:model_defaults.weekly_synthesis
 for d in dates_in_week:
   notella-state get-daily {d}            # may return null
 ```
@@ -153,7 +153,7 @@ Return ONLY valid JSON matching WeeklySynthesisSchema.
 
 ### Step 4 — Call the model
 
-Default: `claude-opus-4-6`. **Use prompt caching** on the system prompt block (`cache_control: { type: "ephemeral" }`) — when running weekly back-syntheses for multiple weeks in one orchestrator pass, the system prompt is reused. ~80-90% discount on cached input tokens after the first call. The memory block is in the user turn and changes every week.
+Runs on the model in `cost-controls.yaml` `model_defaults.weekly_synthesis` (currently `opus`, chosen by the 2026-11-08 eval: weekly integration and the focus scorecard). When the orchestrator runs this stage it dispatches a subagent with that model; run directly, it uses the session model. **Use prompt caching** on the system prompt block (`cache_control: { type: "ephemeral" }`) — when running weekly back-syntheses for multiple weeks in one orchestrator pass, the system prompt is reused. ~80-90% discount on cached input tokens after the first call. The memory block is in the user turn and changes every week.
 
 ### Step 5 — Validate
 
@@ -296,7 +296,7 @@ Updates `state.json:last_synthesis_at.weekly`.
 Daily briefs found: 5 of 7 (no notes on Sat/Sun)
 Predecessor: weekly/2026-W17.json (4 themes, 6 open actions, 4 focus items)
 Verdicts in week: 2 (1 focus done, 1 commitment drop)
-Synthesizing with claude-opus-4-6...
+Synthesizing with claude-opus-5-5...
 Generated weekly/2026-W18.json
   themes: 4 (2 continuing, 2 new) · dropped: 1
   focus scorecard: 2 happened, 1 partial, 1 no evidence
