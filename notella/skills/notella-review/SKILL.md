@@ -1,6 +1,6 @@
 ---
 name: notella-review
-description: "The human verdict loop for the notella facility. Shows a short list of what the notebook left open — yesterday's watch items, questions carried for days, commitments older than two weeks, last week's unscored focus, last month's watchlist, pages whose photo looks upside down / sideways / mirrored or is poor quality, photos held in the inbox as possible duplicates, and newly distilled principles — and records a one-word answer for each: done, drop, carry or wrong (pin for principles). Use whenever the user says 'notella review', 'morning review', 'review notella', 'what did I say I would do', 'close out notella items', 'mark done in notella', 'review held imports', 'review image problems', 'confirm my principles', or any request to confirm, close or correct items the syntheses are tracking. Writes `longitudinal/verdicts.ndjson` and `correction` events through `notella-state`. `--report` mode asks nothing and writes `logs/review-pending.md` for the orchestrator's unattended runs."
+description: "The human verdict loop for the notella facility. Shows a short list of what the notebook left open — yesterday's watch items, questions carried for days, commitments older than two weeks, last week's unscored focus, last month's watchlist, pages whose photo looks upside down / sideways / mirrored or is poor quality, photos held in the inbox as possible duplicates, newly distilled principles and newly proposed mental models — and records a one-word answer for each: done, drop, carry or wrong (pin for principles; pin, promote, demote, merge and borrowed-from for models). Use whenever the user says 'notella review', 'morning review', 'review notella', 'what did I say I would do', 'close out notella items', 'mark done in notella', 'review held imports', 'review image problems', 'confirm my principles', 'confirm my models', 'promote a model', 'merge models', or any request to confirm, close or correct items the syntheses are tracking. Writes `longitudinal/verdicts.ndjson` and `correction` events through `notella-state`. `--report` mode asks nothing and writes `logs/review-pending.md` for the orchestrator's unattended runs."
 ---
 
 # notella-review — the human verdict loop
@@ -67,8 +67,9 @@ Notella review — 2026-05-06 (yesterday: 2026-05-05)
  8. [image]      2026-04-09-y534: rotate 180 (classify-legacy, stamp-position)   pages/2026-04-09-y534
  9. [held]       IMG_4422.HEIC ≈ 2026-04-09-75hq (distance 3)               inbox/_held/
 10. [principle]  Ship, not spec.                                          principles · 6 pages since 2026-01-01
+11. [model]      Three-tier state hierarchy (functional · 18 pages)       models · needs: documented
 
-Answer each with: done | drop | carry | wrong   (add a note after a dash; principles also take pin)
+Answer each with: done | drop | carry | wrong   (add a note after a dash; principles also take pin; models also take pin, promote, demote, merge, borrowed-from)
 ```
 
 Two further groups come from the orchestrator and appear only when present:
@@ -87,6 +88,7 @@ Three more groups come from the image tooling and the principles skill, after th
    - `wrong` — not a duplicate. Review runs `notella_images.py release NAME`; the next inbox drain mints it, and `hold` will not hold it again.
    - `carry` — decide later. `drop` is treated as `done`.
 10. **Proposed principles** — principles `notella-principles` distilled that nobody has confirmed yet, each shown once. Verdicts as that skill defines them: `done` confirms (a note `rename: <text>` rewords it), `wrong` retires it, `carry` keeps it proposed, and the extra verb **`pin`** pins it to the Today screen; `drop` is treated as `wrong`. Review only records the verdict; the next principles refresh applies it.
+11. **Proposed models** — mental models `notella-models` recorded that nobody has confirmed yet, each shown once, highest stage first (deployed and ready before glimpses), at most 5 per run. Verdicts as that skill defines them: `done` confirms (note `rename: <text>` renames it), `wrong` retires it (`drop` = `wrong`), `carry` keeps it proposed, `pin` makes it the model of the day, **`promote`** / **`demote`** move its stage (note `to: <stage>`, else one step), **`merge`** folds it into another model (note `into: <model id>`), **`borrowed-from`** marks it as adapted from a known model (note = that model's name). Review only records; the next `notella-models` refresh applies. A model can also be named directly: `notella review model three-tier-state promote — to: ready` records one verdict without building the list.
 
 ## Verdict vocabulary
 
@@ -96,9 +98,12 @@ Three more groups come from the image tooling and the principles skill, after th
 | `drop`  | It will not happen and should stop being tracked. | commitment → `abandoned` |
 | `carry` | Still live; keep showing it. | unchanged |
 | `wrong` | The item is a misreading of the page or a model artefact; it never existed as stated. | commitment → `abandoned`, with the note |
-| `pin`   | Principles only: show this principle every day. | none (read by `notella-principles`) |
+| `pin`   | Principles and models: show it every day (principle rotation, model of the day). | none (read by `notella-principles` / `notella-models`) |
+| `promote` / `demote` | Models only: move the stage (note `to: <stage>`, else one step). | none (read by `notella-models`) |
+| `merge` | Models only: fold into another model (note `into: <id>`); this id retires. | none (read by `notella-models`) |
+| `borrowed-from` | Models only: mark as adapted from a known model (note = its name). | none (read by `notella-models`) |
 
-Image, held-import and principle items reinterpret the four words as described in groups 8–10.
+Image, held-import, principle and model items reinterpret the four words as described in groups 8–11.
 
 Optional free text after a dash: `done — shipped Tuesday`, `wrong — that was a quote, not a task`. The note is stored verbatim.
 
@@ -130,8 +135,9 @@ For each candidate compute `target_kind`, `target_text`, `target_id`, `source_re
 | `image`      | `"{page_id}: {rotate R flip F \| needs a look} ({sources}); {warnings}"` | the page id | `pages/{page_id}/quality.json` |
 | `held_import`| `"{held name} ≈ {page_id} (distance d)"` | the first 16 hex of the held file's sha256 | `inbox/_held/{name}.held.json` |
 | `principle`  | the principle's `statement` | the principle's `id` | `longitudinal/principles.json#{id}` |
+| `model`      | `"{name} ({stage} · {n} pages)"` | the model's `id` | `longitudinal/models.json#{id}` |
 
-Four kinds therefore carry an id minted elsewhere (`commitment` from the ledger, `forecast` from the monthly brief, `principle` from the principles record, `image` = the page id); `held_import` is keyed by content so a renamed file keeps its verdict; the other three are keyed by their text.
+Five kinds therefore carry an id minted elsewhere (`commitment` from the ledger, `forecast` from the monthly brief, `principle` from the principles record, `model` from the models record, `image` = the page id); `held_import` is keyed by content so a renamed file keeps its verdict; the other three are keyed by their text.
 
 **`hash(text)`** is the same function the ledger aggregator uses for `task_id`, so a commitment seen through a daily brief and the same commitment seen in the ledger share one id:
 
@@ -172,10 +178,10 @@ For each answered item, in list order:
 ```
 row = {
   ts:          now (ISO-8601),
-  target_kind: commitment | question | focus | watch | forecast | image | held_import | principle,
+  target_kind: commitment | question | focus | watch | forecast | image | held_import | principle | model,
   target_id:   <as computed>,
   target_text: <verbatim>,
-  verdict:     done | drop | carry | wrong | pin,
+  verdict:     done | drop | carry | wrong | pin | promote | demote | merge | borrowed-from,
   note:        <free text after the dash, or null>,
   source_ref:  <as computed>
 }
@@ -231,6 +237,7 @@ Verdicts are read, never rewritten, by:
 - **notella-project-synthesis** — `commitment` verdicts retire commitments in `since_last.commitments_changed` (`done` → `done`, `drop` → `dropped`, `wrong` → `removed`).
 - **notella-images** (`scan`) — the latest `image` verdict per page: `wrong` clears the orientation suspicion (`review-cleared`).
 - **notella-principles** — `principle` verdicts: `done` confirms, `wrong`/`drop` retires, `pin` pins, `carry` keeps.
+- **notella-models** — `model` verdicts: `done` confirms (`rename:`), `wrong`/`drop` retires, `pin` pins, `promote`/`demote` set the verdict stage, `merge` retires into another id, `borrowed-from` sets provenance, `carry` keeps.
 - **the ledger aggregator** (orchestrator step 10) — for `target_kind: commitment`, maps `done` → `done`, `drop` → `abandoned`, `wrong` → `abandoned` with `state_evidence` set to the note, `carry` → unchanged. A verdict always outranks the aggregator's substring inference.
 
 ## Idempotency
@@ -256,8 +263,11 @@ Verdicts are read, never rewritten, by:
 | No `quality.json` anywhere (images never scanned) | Skip the image group; say "run notella-images scan". |
 | `notella_images.py` fails on a side effect (no sips, page locked) | The verdict stays recorded; report the failed command so the person can run it. |
 | A held file named in `_held/` has no `.held.json` note | Show it with "reason unknown"; `wrong` still releases it. |
-| `pin` given for a non-principle item | Rejected like an unknown word. |
+| `pin` given for an item that is neither a principle nor a model | Rejected like an unknown word. |
+| `promote`, `demote`, `merge` or `borrowed-from` given for a non-model item | Rejected like an unknown word. |
+| `merge` without `into: <id>`, or into an id not in `models.json` | Rejected once with "merge — into: <model id>"; then skipped. |
 | `principles.json` absent | Skip the principles group silently. |
+| `models.json` absent | Skip the models group silently. |
 
 ## What this skill does NOT do
 

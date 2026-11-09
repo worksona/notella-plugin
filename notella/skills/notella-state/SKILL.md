@@ -1,6 +1,6 @@
 ---
 name: notella-state
-description: "The shared memory of the notella facility — handwritten note intelligence over time. Read, write, or validate `~/notella/` — manifest, page lifecycle, state.json, events, daily/weekly/monthly/project synthesis, longitudinal intelligence (themes snapshots, principles, ledgers), image records, activity log. Trigger on 'log this page', 'advance the phase of page X', 'tail the activity log', 'check notella-state health', 'validate notella', 'list pages', 'count pages by phase', 'get the manifest', 'rebuild the page index', 'init the notella facility', 'append to the verdicts ledger', 'get the previous themes snapshot', or any request that reads or writes `~/notella/`. Also trigger automatically whenever another notella-* skill (pipeline, synthesis, themes, principles, review, images, import, kanban) needs to read or write state — they route through this one. Init a new facility if `~/notella/manifest.yaml` doesn't exist."
+description: "The shared memory of the notella facility — handwritten note intelligence over time. Read, write, or validate `~/notella/` — manifest, page lifecycle, state.json, events, daily/weekly/monthly/project synthesis, longitudinal intelligence (themes snapshots, principles, models, ledgers), image records, activity log. Trigger on 'log this page', 'advance the phase of page X', 'tail the activity log', 'check notella-state health', 'validate notella', 'list pages', 'count pages by phase', 'get the manifest', 'rebuild the page index', 'init the notella facility', 'append to the verdicts ledger', 'get the previous themes snapshot', or any request that reads or writes `~/notella/`. Also trigger automatically whenever another notella-* skill (pipeline, synthesis, themes, principles, models, review, images, import, kanban) needs to read or write state — they route through this one. Init a new facility if `~/notella/manifest.yaml` doesn't exist."
 ---
 
 # notella-state — the memory layer
@@ -96,6 +96,7 @@ Refuse to write any event missing required fields.
 | `synthesis.monthly`    | A monthly synthesis (month in review) was written. |
 | `themes.refreshed`     | Longitudinal themes were rebuilt (a new snapshot under `longitudinal/themes/`). |
 | `principles.refreshed` | `longitudinal/principles.json` (+ `.md`, `principles-context.md`) was rebuilt by `notella-principles`. |
+| `models.refreshed`     | `longitudinal/models.json` (+ a dated snapshot under `longitudinal/models/`, `models.md`, `models-context.md`) was rebuilt by `notella-models`. |
 | `inbox.drained`        | The intake skill processed the inbox.           |
 | `manifest.edited`      | The manifest was updated.                       |
 | `correction`           | A correction to an earlier event/artifact. `evidence.correction_type` says which kind: `reprocess` (a synthesis overwritten with `--reprocess`), `review-verdict` (a human verdict recorded by `notella-review`; the same row is appended to `longitudinal/verdicts.ndjson`), `orientation-fix` (`derived/` rebuilt with `{rotate, flip, previous, reset}` by `notella-images`; id `correction-{date}-{sha256(page\|rotate\|flip\|date)[:6]}`), `duplicate-raw-image` (`meta.yaml:duplicate_of` set by `notella-images mark-duplicate`), or others defined by the emitting skill. |
@@ -166,7 +167,7 @@ The skill carries reference copies of `manifest.yaml`, `state.json`, `SCHEMA.md`
 
 **list-monthlies** → all `YYYY-MM` months with monthly synthesis written, ascending.
 
-**get-longitudinal** `kind` → parsed `longitudinal/{kind}.json` (themes | trajectory | patterns | principles). For `themes` this is the latest copy; use `get-themes-snapshot` to reach history.
+**get-longitudinal** `kind` → parsed `longitudinal/{kind}.json` (themes | trajectory | patterns | principles | models). For `models`, dated history lives in `longitudinal/models/{YYYY-MM-DD}.json`. For `themes` this is the latest copy; use `get-themes-snapshot` to reach history.
 
 **get-themes-snapshot** `date | latest | previous` → parsed snapshot from `longitudinal/themes/`, plus its `path`:
 
@@ -290,6 +291,8 @@ Update `state.json:last_synthesis_at.{daily,weekly,monthly,by_project[slug]}` un
 ```
 
 For `kind: trajectory | patterns` the behaviour is unchanged: write `longitudinal/{kind}.json`, update `last_longitudinal_at`, emit `themes.refreshed`. Earlier snapshots under `longitudinal/themes/` are never touched.
+
+For `kind: models` (caller `notella-models`, which writes through its own `finalize --write`): `longitudinal/models/{date}.json` snapshot, `models.md`, `models-context.md`, then `models.json` last (each tmp + rename), one `models.refreshed` line in `activity.ndjson` and the `models.refreshed` event. Snapshots are never modified.
 
 For `kind: principles` (caller `notella-principles`): `{json, md, context_md}` are all required; write `longitudinal/principles.json`, `principles.md` and `principles-context.md` (each tmp + rename, json last so a reader never sees a json newer than its md), append `principles.refreshed` to `activity.ndjson`, and emit the `principles.refreshed` event the caller passes. There are no dated snapshots; the event log keeps the history.
 
