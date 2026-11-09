@@ -9,7 +9,7 @@ Claude Code plugin marketplace for **notella** — handwritten note intelligence
 
 Then `/notella-state init` to create `~/notella/`, drop page photos in `~/notella/inbox/`, and run `/notella-orchestrator`. For unattended runs: `NL_DIR=~/notella claude -p "/notella-orchestrator --auto" --dangerously-skip-permissions`.
 
-Skills (22): `/notella-actions` · `/notella-classify` · `/notella-composition` · `/notella-daily-synthesis` · `/notella-diagram` · `/notella-first-pass` · `/notella-images` · `/notella-import` · `/notella-intake` · `/notella-kanban` · `/notella-metadata` · `/notella-monthly-synthesis` · `/notella-orchestrator` · `/notella-principles` · `/notella-project-synthesis` · `/notella-review` · `/notella-sketch` · `/notella-state` · `/notella-table` · `/notella-themes` · `/notella-transcribe` · `/notella-weekly-synthesis`
+Skills (23): `/notella-actions` · `/notella-classify` · `/notella-composition` · `/notella-daily-synthesis` · `/notella-diagram` · `/notella-first-pass` · `/notella-images` · `/notella-import` · `/notella-intake` · `/notella-kanban` · `/notella-metadata` · `/notella-models` · `/notella-monthly-synthesis` · `/notella-orchestrator` · `/notella-principles` · `/notella-project-synthesis` · `/notella-review` · `/notella-sketch` · `/notella-state` · `/notella-table` · `/notella-themes` · `/notella-transcribe` · `/notella-weekly-synthesis`
 
 | Skill | What it does |
 | --- | --- |
@@ -32,8 +32,9 @@ Skills (22): `/notella-actions` · `/notella-classify` · `/notella-composition`
 | `notella-project-synthesis` | Per-project health: timeline, commitments, drift, blockers, risk |
 | `notella-themes` | Longitudinal themes over the whole corpus; dated snapshots with a measured delta |
 | `notella-principles` | Guiding Dave — the principles David states and re-states (emphasised, boxed, repeated), with evidence pages, status and tensions; monthly after themes |
+| `notella-models` | Mental models — the named frameworks, matrices, hierarchies, loops and pipelines David thinks with, each with a computed lifecycle (glimpse → forming → functional → ready → deployed), readiness checklist, lineage and next step; monthly after principles. Feeds the desktop Models screens |
 | `notella-monthly-synthesis` | Month-in-review: theme arc, commitment aging, forecast scorecard and next-month watchlist |
-| `notella-review` | Human verdict loop — done / drop / carry / wrong on open items, image problems, held imports and proposed principles — feeding `verdicts.ndjson` and the ledgers |
+| `notella-review` | Human verdict loop — done / drop / carry / wrong on open items, image problems, held imports, proposed principles and proposed models (pin, promote, demote, merge) — feeding `verdicts.ndjson` and the ledgers |
 | `notella-kanban` | Opens the read-only desktop app (`/Applications/Notella.app`) or runs the Next.js dev server on :3344 |
 
 The facility defaults to `~/notella`; set `NL_DIR` to point the skills (and the desktop app) at another folder.

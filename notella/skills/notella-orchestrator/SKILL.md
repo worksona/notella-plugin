@@ -1,6 +1,6 @@
 ---
 name: notella-orchestrator
-description: "The conductor of the notella-* skill family. Walks an eleven-step decision checklist (inbox check → hold duplicates → drain, pipeline catch-up with image quality and orientation gate, daily synthesis, weekly synthesis, project synthesis, themes refresh, principles refresh, monthly synthesis, stuck-page archive, ledgers aggregation, review) and proposes the next batch of work. Use whenever the user says 'run notella', 'process my inbox', 'what should notella do next', 'orchestrate', 'sync notella', 'morning notella run', 'catch me up on notella', 'what's pending', or any request asking the facility to tell itself what to do next. Approval-gated by default; `--auto` runs without prompts and is the headless entry point for scheduled runs. Reads through `notella-state` and invokes other notella-* skills. Thin by design — routes, does not perform pipeline work itself."
+description: "The conductor of the notella-* skill family. Walks an eleven-step decision checklist (inbox check → hold duplicates → drain, pipeline catch-up with image quality and orientation gate, daily synthesis, weekly synthesis, project synthesis, themes refresh, principles refresh, models refresh, monthly synthesis, stuck-page archive, ledgers aggregation, review) and proposes the next batch of work. Use whenever the user says 'run notella', 'process my inbox', 'what should notella do next', 'orchestrate', 'sync notella', 'morning notella run', 'catch me up on notella', 'what's pending', or any request asking the facility to tell itself what to do next. Approval-gated by default; `--auto` runs without prompts and is the headless entry point for scheduled runs. Reads through `notella-state` and invokes other notella-* skills. Thin by design — routes, does not perform pipeline work itself."
 ---
 
 # notella-orchestrator — the conductor
@@ -27,11 +27,12 @@ The orchestrator is **thin**: it never writes page artifacts itself (stubs excep
 | `--reprocess` | pass through to specialist skills, causing existing artifacts to be overwritten |
 | `--themes-now` | force a themes refresh this run regardless of cadence (step 6); principles (step 7) follow it |
 | `--discover-projects` | run the project discovery pass even if the manifest is populated |
-| `--skip-synthesis` | skip steps 3–8 — daily, weekly, project, themes, principles and monthly. Inbox, pipeline, stuck-page archive, ledgers and review still run |
+| `--skip-synthesis` | skip steps 3–8 — daily, weekly, project, themes, principles, models and monthly. Inbox, pipeline, stuck-page archive, ledgers and review still run |
 | `--skip-weekly` | skip step 4 |
 | `--skip-project` | skip step 5 |
 | `--skip-themes` | skip step 6 (and therefore step 8, which needs the themes delta; step 7 runs only if already due against an existing snapshot) |
 | `--skip-principles` | skip step 7 |
+| `--skip-models` | skip step 7b |
 | `--model-override <stage>=<alias>` | run one stage on another model for this run (repeatable); see Model routing |
 | `--skip-monthly` | skip step 8 |
 | `--skip-review` | skip step 11 |
@@ -240,6 +241,19 @@ if notella-principles is installed
 
 Monthly, right after themes, because the principles skill reads the fresh snapshot's `conceptual_evolution`. It distils the principles David states and re-states (emphasised, boxed, starred, repeated spans in `transcribe.json:emphasis[]`) into `longitudinal/principles.json`, `principles.md` and the paste-anywhere `principles-context.md`, and emits `principles.refreshed`. A deterministic candidate pre-pass runs first, so a refresh is one reasoning step, not a per-page model run. `--skip-principles` skips the step; `--skip-synthesis` skips it with the other synthesis steps. Unconfirmed principles appear in review (step 11) once each.
 
+### Step 7b — Models refresh
+
+```
+if notella-models is installed
+   AND (step 7 refreshed principles this run
+        OR longitudinal/models.json is missing
+        OR models.json:generated_at is older than the newest longitudinal/themes/*.json snapshot
+        OR models.json:generated_at > 30 days ago):
+  invoke notella-models
+```
+
+Monthly, right after principles. `notella-models` finds the named thinking structures (frameworks, matrices, hierarchies, loops, pipelines, maps, metaphors) and keeps each with a computed lifecycle stage (glimpse → forming → functional → ready → deployed), readiness checklist, lineage and next step, in `longitudinal/models.json` plus a dated snapshot under `longitudinal/models/`, `models.md` and `models-context.md`; emits `models.refreshed`. A deterministic pre-pass and a bundle feed one reasoning subagent on the `models` alias; the script validates and computes every stage. `--skip-models` skips the step; `--skip-synthesis` skips it with the other synthesis steps. Unconfirmed models appear in review (step 11), five per run.
+
 ### Step 8 — Monthly synthesis
 
 ```
@@ -299,7 +313,7 @@ else:
   invoke notella-review                 # interactive: done / drop / carry / wrong per item
 ```
 
-Review shows yesterday's watch items, open commitments older than 14 days, unresolved questions, pages whose first-pass drew three or more sanity warnings, stuck pages awaiting a human, image attention (pages suspected mis-oriented or graded poor), held imports (near duplicates in `inbox/_held/`), unconfirmed principles, and (under `--auto`) any project-discovery proposal that is pending confirmation. Verdicts are appended to `longitudinal/verdicts.ndjson` and feed step 10 on the next run. `--skip-review` skips the step. Review makes no model call; its cost is reading.
+Review shows yesterday's watch items, open commitments older than 14 days, unresolved questions, pages whose first-pass drew three or more sanity warnings, stuck pages awaiting a human, image attention (pages suspected mis-oriented or graded poor), held imports (near duplicates in `inbox/_held/`), unconfirmed principles, unconfirmed models, and (under `--auto`) any project-discovery proposal that is pending confirmation. Verdicts are appended to `longitudinal/verdicts.ndjson` and feed step 10 on the next run. `--skip-review` skips the step. Review makes no model call; its cost is reading.
 
 ## How a run executes
 
@@ -351,6 +365,9 @@ plan:
   step_7_principles:
     refresh: true
     reason: "themes refreshed this run"                   # or "principles.json missing" / "not due"
+  step_7b_models:
+    refresh: true
+    reason: "principles refreshed this run"               # or "models.json missing" / "not due"
   step_8_monthly:
     months_to_synthesize: [2026-10]
     deferred: null                                        # or "themes-not-fresh"
@@ -390,6 +407,7 @@ Per-stage cost follows the stage's model (see Model routing). Measured on 2026-1
 | project synth | ~$0.40 / refresh |
 | themes | ~$1.80 / refresh |
 | principles | ~$0.60 / refresh (one reasoning step over the pre-pass candidates) |
+| models | ~$1.50 / refresh (one reasoning step over ~240 shortlisted constructs) |
 | monthly synth | ~$2.00 / month |
 | inbox check, hold, image scan, orientation fix | $0 (sips + Python, no model) |
 | ledgers | $0 (filesystem only) |
@@ -466,7 +484,7 @@ Invoke each skill in plan order. For pipeline catch-up, group by stage and paral
 Each stage runs on the model named in `cost-controls.yaml` `model_defaults.<stage>` — a Claude Code Agent-tool alias (`haiku`, `sonnet`, `opus`, `fable`). Enforce it by **dispatching the stage to a subagent with that model**, never by running the stage inline in this session (the session's own model would be used instead):
 
 - **Page stages** (classify, transcribe, composition, metadata, diagram, sketch, table, first-pass, actions): one `Agent` call per batch of **at most 8 pages**, `subagent_type: general-purpose`, `model: <alias>`. Prompt: the facility path (`NL_DIR`), the page ids, and "for each page, run the `notella-<stage>` skill (read `$CLAUDE_PLUGIN_ROOT/skills/notella-<stage>/SKILL.md` and follow it); write only that stage's artifact and its event; report per page: done / skipped / error, and your exact model ID". Batches of one stage run in parallel; stages stay in the dependency order below.
-- **Synthesis stages** (daily, weekly, project, themes, principles, monthly): one subagent per unit of work (one date, one week, one slug, one month) with the stage's alias. Dailies stay oldest-first and sequential (each reads its predecessor).
+- **Synthesis stages** (daily, weekly, project, themes, principles, models, monthly): one subagent per unit of work (one date, one week, one slug, one month) with the stage's alias. Dailies stay oldest-first and sequential (each reads its predecessor).
 - **No model**: inbox check, hold, image scan, orientation fix, ledgers, stuck archive, and review run here, in the session.
 - `--model-override <stage>=<alias>` (repeatable) changes one stage for this run only, e.g. to re-run an eval arm; it is reported in Phase D.
 - A missing or unknown alias falls back to `sonnet` with a warning in the report. `review: none` means no subagent.
@@ -488,6 +506,7 @@ Each stage runs on the model named in `cost-controls.yaml` `model_defaults.<stag
 12. project syntheses for touched slugs
 13. themes refresh
 14. principles refresh (after themes)
+14b. models refresh (after principles)
 15. monthly synthesis (after themes)
 16. stuck-page auto-archive
 17. ledgers aggregation
@@ -539,9 +558,9 @@ Four recipes, all idempotent, all cheap when nothing is due:
 
 | When | Command | What it does |
 | --- | --- | --- |
-| Morning, daily (`30 6 * * *`) | `claude -p "/notella-orchestrator --auto --skip-weekly --skip-monthly --skip-themes --skip-principles" --dangerously-skip-permissions` | inbox check/hold/drain, image scan, pipeline, dailies for closed dates, project briefs for touched slugs, stuck archive, ledgers, `review --report` → `logs/review-pending.md` |
+| Morning, daily (`30 6 * * *`) | `claude -p "/notella-orchestrator --auto --skip-weekly --skip-monthly --skip-themes --skip-principles --skip-models" --dangerously-skip-permissions` | inbox check/hold/drain, image scan, pipeline, dailies for closed dates, project briefs for touched slugs, stuck archive, ledgers, `review --report` → `logs/review-pending.md` |
 | Monday (`30 7 * * 1`) | `claude -p "/notella-orchestrator --auto" --dangerously-skip-permissions` | everything above plus the weekly for the week just closed; themes/principles/monthly only if due by cadence |
-| First of month (`0 5 1 * *`) | `claude -p "/notella-orchestrator --auto --themes-now" --dangerously-skip-permissions` | forces the themes snapshot, then principles, then the monthly for the month just closed, then ledgers and review report |
+| First of month (`0 5 1 * *`) | `claude -p "/notella-orchestrator --auto --themes-now" --dangerously-skip-permissions` | forces the themes snapshot, then principles, then models, then the monthly for the month just closed, then ledgers and review report |
 | Inbox watcher (launchd `WatchPaths` on `$NL_DIR/inbox`, 2-minute debounce) | `claude -p "/notella-orchestrator --auto --skip-synthesis --max-pages 20" --dangerously-skip-permissions` | cheap stages only: inbox check → hold → intake → image scan → classify → transcribe → L1 → first-pass → actions → indexed. Synthesis stays on the schedule so a trickle of photos never triggers an Opus run. Moving files into `inbox/_held/` touches the watched folder; the debounce and the orchestrator lock absorb the extra trigger |
 
 Every recipe needs `NL_DIR=/Users/davidolsson/Documents/notella` in its environment (launchd `EnvironmentVariables`, or a wrapper script). Logs go to `$NL_DIR/logs/activity.ndjson` and `pipeline.ndjson` as usual; the review report at `$NL_DIR/logs/review-pending.md` is what the human reads next morning.
@@ -573,6 +592,7 @@ Last orchestrator run: 2 hours ago. Next due: weekly 2026-W45 on Mon 2026-11-16;
 | `notella_images.py` cannot run (no `sips`, not macOS) | Step 1 drains without the duplicate hold (intake's id rule still catches same-date duplicates); step 2 skips the image scan and the orientation gate passes every page; both reported as `images: skipped (no sips)`. |
 | A page is orientation-blocked | Not an error: the page stays at `classified`, is listed under `orientation_blocked`, and is shown in review until fixed or cleared. It does not count toward stuck-page escalation while a review item is open. |
 | `notella-principles` not installed | Skip step 7 with a one-line notice. |
+| `notella-models` not installed | Skip step 7b with a one-line notice. |
 | `notella-review` not installed | Skip step 11 with a one-line notice. |
 | Another orchestrator run is active (`locks/orchestrator.lock` live) | Exit with `another-run-active`; the watcher and the schedule can collide — this is the intended resolution. |
 | `NL_DIR` unset in a headless run | Abort before Phase A with "NL_DIR not set; refusing to run against ~/notella in --auto mode" unless `~/notella/manifest.yaml` exists. |

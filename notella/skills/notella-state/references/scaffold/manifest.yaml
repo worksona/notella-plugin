@@ -91,6 +91,7 @@ model_defaults:
   project_synthesis: opus
   themes: opus
   principles: opus
+  models: opus
   monthly_synthesis: opus      # falls back to `themes` when absent
 
 # Provider keys — references, never values.
